@@ -1,6 +1,7 @@
-cocreando.json
-utils/cocreando.json
-# Credenciales
-utils/cocreando.json
-*/serviceAccountKey.json
-*.env
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.DS_Store
+serviceAccountKey.json

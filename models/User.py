@@ -1,13 +1,22 @@
-class Usuario:
-    def __init__(self, uid, nombre, email, rol="usuario", foto_url=None, proyectos_creados=None):
+class User:
+    def __init__(self, uid, email, username, role="usuario", is_banned=False, aceptaelreto_username=None):
         self.uid = uid
-        self.nombre = nombre
         self.email = email
-        self.rol = rol
-        self.foto_url = foto_url
-        self.proyectos_creados = proyectos_creados or []  # lista de IDs
+        self.username = username
+        self.role = role
+        self.is_banned = is_banned
+        self.aceptaelreto_username = aceptaelreto_username
+        self.created_at = firestore.SERVER_TIMESTAMP
+        self.updated_at = firestore.SERVER_TIMESTAMP
 
-        
-    def to_json(self):
-        return self.__dict__
-    
+    def to_dict(self):
+        return {
+            "uid": self.uid,
+            "email": self.email,
+            "username": self.username,
+            "role": self.role,
+            "isBanned": self.is_banned,
+            "aceptaelretoUsername": self.aceptaelreto_username,
+            "createdAt": self.created_at,
+            "updatedAt": self.updated_at
+        }
