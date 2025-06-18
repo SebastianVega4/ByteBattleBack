@@ -1,10 +1,12 @@
 from flask import Blueprint, request, jsonify
 from models.Participation import Participation
-from utils.firebase import db, storage_bucket
+from utils.firebase import db
 from utils.decorators import firebase_token_required, admin_required
-import uuid
+from firebase_admin import firestore
+from utils.exceptions import ValidationError
 
 participation_bp = Blueprint('participations', __name__)
+MAX_CODE_LENGTH = 10000  # Límite de 10,000 caracteres para el código
 
 @participation_bp.route('', methods=['POST'])
 @firebase_token_required
@@ -33,20 +35,6 @@ def initiate_participation():
     except Exception as e:
         return jsonify({"error": f"Error al iniciar participación: {str(e)}"}), 500
 
-@participation_bp.route('/<participation_id>/confirm-payment', methods=['PUT'])
-@admin_required
-def confirm_payment(participation_id):
-    try:
-        participation_ref = db.collection('participations').document(participation_id)
-        participation_ref.update({
-            "isPaid": True,
-            "paymentStatus": "confirmed",
-            "paymentConfirmationDate": firestore.SERVER_TIMESTAMP
-        })
-        return jsonify({"message": "Pago confirmado exitosamente"}), 200
-    except Exception as e:
-        return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
-
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
@@ -54,6 +42,10 @@ def submit_score_and_code(participation_id):
         data = request.get_json()
         score = data.get('score')
         code = data.get('code')
+        
+        # Validar longitud del código
+        if code and len(code) > MAX_CODE_LENGTH:
+            raise ValidationError(f"El código excede el límite de {MAX_CODE_LENGTH} caracteres")
         
         # Verificar que la participación existe y pertenece al usuario
         participation_ref = db.collection('participations').document(participation_id)
@@ -63,44 +55,18 @@ def submit_score_and_code(participation_id):
         if participation.to_dict().get('userId') != request.user['uid']:
             return jsonify({"error": "No autorizado"}), 403
         
-        # Guardar código en Cloud Storage
-        code_path = f"code/{uuid.uuid4()}.txt"
-        blob = storage_bucket.blob(code_path)
-        blob.upload_from_string(code)
-        
-        # Actualizar participación
+        # Actualizar participación (ahora guardamos el código directamente)
         participation_ref.update({
             "score": score,
-            "codeStoragePath": code_path,
+            "code": code,  # Guardamos el código como texto plano
             "submissionDate": firestore.SERVER_TIMESTAMP
         })
         
         return jsonify({"message": "Resultados enviados exitosamente"}), 200
+    except ValidationError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Error al enviar resultados: {str(e)}"}), 500
-
-@participation_bp.route('/challenge/<challenge_id>/leaderboard', methods=['GET'])
-def get_leaderboard(challenge_id):
-    try:
-        participations = db.collection('participations') \
-            .where('challengeId', '==', challenge_id) \
-            .where('paymentStatus', '==', 'confirmed') \
-            .order_by('score', direction=firestore.Query.DESCENDING) \
-            .stream()
-            
-        leaderboard = []
-        for part in participations:
-            part_data = part.to_dict()
-            user_data = db.collection('users').document(part_data['userId']).get().to_dict()
-            leaderboard.append({
-                "username": user_data.get('username'),
-                "score": part_data.get('score'),
-                "submissionDate": part_data.get('submissionDate')
-            })
-            
-        return jsonify(leaderboard), 200
-    except Exception as e:
-        return jsonify({"error": f"Error al obtener clasificación: {str(e)}"}), 500
 
 @participation_bp.route('/<participation_id>/code', methods=['GET'])
 def get_participant_code(participation_id):
@@ -116,9 +82,8 @@ def get_participant_code(participation_id):
         if challenge.to_dict().get('status') != 'pasado':
             return jsonify({"error": "El código solo es visible después de finalizado el reto"}), 403
         
-        # Obtener código de Cloud Storage
-        blob = storage_bucket.blob(part_data['codeStoragePath'])
-        code = blob.download_as_text()
+        # Obtener código directamente del documento
+        code = part_data.get('code', '')
         
         return jsonify({
             "code": code,

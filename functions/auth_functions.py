@@ -1,6 +1,6 @@
-from firebase_admin import auth, firestore
+from firebase_admin import auth
 from utils.firebase import db
-from utils.exceptions import ValidationError, NotFoundError
+from utils.exceptions import ValidationError, NotFoundError, ForbiddenError
 from models.User import User
 
 def register_user(data):

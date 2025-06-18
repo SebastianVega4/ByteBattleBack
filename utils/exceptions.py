@@ -1,3 +1,5 @@
+from flask import jsonify
+
 class ByteBattleError(Exception):
     """Base exception class for ByteBattle"""
     def __init__(self, message, status_code=400, payload=None):
@@ -30,3 +32,16 @@ class ValidationError(ByteBattleError):
     """Raised when input validation fails"""
     def __init__(self, message="Validation error", payload=None):
         super().__init__(message, 400, payload)
+
+def handle_error(e):
+    """Convert exceptions to JSON responses"""
+    if isinstance(e, ByteBattleError):
+        response = jsonify(e.to_dict())
+        response.status_code = e.status_code
+        return response
+    response = jsonify({
+        'message': 'An unexpected error occurred',
+        'error': str(e)
+    })
+    response.status_code = 500
+    return response

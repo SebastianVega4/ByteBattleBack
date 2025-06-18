@@ -1,13 +1,13 @@
 from flask import Blueprint, request, jsonify
-from functions.auth_functions import register_user, set_admin_role, ban_user
-from utils.decorators import firebase_token_required, admin_required
 from utils.exceptions import handle_error
+from utils.decorators import firebase_token_required, admin_required
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register_user_route():
     try:
+        from functions.auth_functions import register_user
         data = request.get_json()
         result = register_user(data)
         return jsonify(result), 201
@@ -18,6 +18,7 @@ def register_user_route():
 @admin_required
 def set_admin_role_route():
     try:
+        from functions.auth_functions import set_admin_role
         data = request.get_json()
         user_id = data.get('uid')
         current_user_id = request.user['uid']
@@ -30,6 +31,7 @@ def set_admin_role_route():
 @admin_required
 def ban_user_route():
     try:
+        from functions.auth_functions import ban_user
         data = request.get_json()
         user_id = data.get('uid')
         is_banned = data.get('isBanned', True)

@@ -5,7 +5,7 @@ class Participation:
         self.user_id = user_id
         self.challenge_id = challenge_id
         self.score = None
-        self.code_storage_path = None
+        self.code = None  # Ahora almacenamos el código directamente como texto
         self.submission_date = None
         self.is_paid = False
         self.payment_status = "pending"  # pending, confirmed, rejected
@@ -17,7 +17,7 @@ class Participation:
             "userId": self.user_id,
             "challengeId": self.challenge_id,
             "score": self.score,
-            "codeStoragePath": self.code_storage_path,
+            "code": self.code,  # Campo de texto para el código
             "submissionDate": self.submission_date,
             "isPaid": self.is_paid,
             "paymentStatus": self.payment_status,

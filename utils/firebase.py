@@ -1,5 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, firestore, auth, storage
+from firebase_admin import credentials, firestore, auth
 import os
 from firebase_admin.exceptions import FirebaseError
 
@@ -10,11 +10,12 @@ def initialize_firebase():
             return firebase_admin.get_app()
             
         cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "serviceAccountKey.json")
-        cred = credentials.Certificate(cred_path)
         
-        firebase_app = firebase_admin.initialize_app(cred, {
-            'storageBucket': os.environ.get("FIREBASE_STORAGE_BUCKET")
-        })
+        if not os.path.exists(cred_path):
+            raise FileNotFoundError(f"Firebase credentials file not found at {cred_path}")
+        
+        cred = credentials.Certificate(cred_path)
+        firebase_app = firebase_admin.initialize_app(cred)
         
         return firebase_app
     except FirebaseError as e:
@@ -24,7 +25,6 @@ def initialize_firebase():
         print(f"Unexpected error initializing Firebase: {str(e)}")
         raise
 
-# Initialize Firebase and get components
+# Initialize Firebase and get Firestore client
 firebase_app = initialize_firebase()
 db = firestore.client()
-storage_bucket = storage.bucket()

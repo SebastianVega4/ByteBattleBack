@@ -1,3 +1,6 @@
+from difflib import restore
+
+
 class User:
     def __init__(self, uid, email, username, role="usuario", is_banned=False, aceptaelreto_username=None):
         self.uid = uid
@@ -6,8 +9,8 @@ class User:
         self.role = role
         self.is_banned = is_banned
         self.aceptaelreto_username = aceptaelreto_username
-        self.created_at = firestore.SERVER_TIMESTAMP
-        self.updated_at = firestore.SERVER_TIMESTAMP
+        self.created_at = restore.SERVER_TIMESTAMP
+        self.updated_at = restore.SERVER_TIMESTAMP
 
     def to_dict(self):
         return {

@@ -4,18 +4,32 @@ from routes.auth_routes import auth_bp
 from routes.challenge_routes import challenge_bp
 from routes.participation_routes import participation_bp
 import os
-from utils.firebase import initialize_firebase  # Añadir esta línea
+from dotenv import load_dotenv
+from utils.firebase import initialize_firebase
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
-# Inicializar Firebase
+# Initialize Firebase
 initialize_firebase()
 
-# Registro de blueprints
+# Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(challenge_bp, url_prefix='/challenges')
 app.register_blueprint(participation_bp, url_prefix='/participations')
+
+# Error handler
+from utils.exceptions import handle_error, ByteBattleError
+
+@app.errorhandler(ByteBattleError)
+def handle_bytebattle_error(e):
+    return handle_error(e)
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    return handle_error(e)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
