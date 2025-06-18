@@ -6,6 +6,8 @@ from routes.participation_routes import participation_bp
 import os
 from dotenv import load_dotenv
 from utils.firebase import initialize_firebase
+from routes.notification_routes import notification_bp
+
 
 load_dotenv()
 
@@ -19,6 +21,7 @@ initialize_firebase()
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(challenge_bp, url_prefix='/challenges')
 app.register_blueprint(participation_bp, url_prefix='/participations')
+app.register_blueprint(notification_bp, url_prefix='/notifications')
 
 # Error handler
 from utils.exceptions import handle_error, ByteBattleError

@@ -4,6 +4,7 @@ from utils.firebase import db
 from utils.decorators import firebase_token_required, admin_required
 from firebase_admin import firestore
 from utils.exceptions import ValidationError
+from services.notification_service import send_notification, send_admin_notification
 
 participation_bp = Blueprint('participations', __name__)
 MAX_CODE_LENGTH = 10000  # Límite de 10,000 caracteres para el código
@@ -28,12 +29,28 @@ def initiate_participation():
         participation = Participation(user_id, challenge_id)
         _, doc_ref = db.collection('participations').add(participation.to_dict())
         
+        # Notificar al usuario
+        challenge_title = challenge.to_dict().get('title', 'el reto')
+        send_notification(
+            user_id=user_id,
+            title="Participación iniciada",
+            message=f"Has iniciado tu participación en {challenge_title}. Realiza el pago para continuar.",
+            notification_type="participation"
+        )
+        
+        # Notificar a los administradores
+        send_admin_notification(
+            title="Nueva participación pendiente",
+            message=f"El usuario {request.user.get('email')} ha iniciado participación en {challenge_title}. Verifica el pago."
+        )
+        
         return jsonify({
             "message": "Participación iniciada. Realiza el pago según las instrucciones.",
             "participationId": doc_ref.id
         }), 201
     except Exception as e:
         return jsonify({"error": f"Error al iniciar participación: {str(e)}"}), 500
+    
 
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
@@ -91,3 +108,40 @@ def get_participant_code(participation_id):
         }), 200
     except Exception as e:
         return jsonify({"error": f"Error al obtener código: {str(e)}"}), 500
+
+# Modifica la función confirm_payment
+@participation_bp.route('/<participation_id>/confirm-payment', methods=['PUT'])
+@admin_required
+def confirm_payment(participation_id):
+    try:
+        participation_ref = db.collection('participations').document(participation_id)
+        participation = participation_ref.get()
+        
+        if not participation.exists:
+            return jsonify({"error": "Participación no encontrada"}), 404
+            
+        user_id = participation.to_dict().get('userId')
+        challenge_id = participation.to_dict().get('challengeId')
+        
+        # Actualizar participación
+        participation_ref.update({
+            "isPaid": True,
+            "paymentStatus": "confirmed",
+            "paymentConfirmationDate": firestore.SERVER_TIMESTAMP
+        })
+        
+        # Notificar al usuario
+        challenge = db.collection('challenges').document(challenge_id).get()
+        challenge_title = challenge.to_dict().get('title', 'el reto')
+        
+        send_notification(
+            user_id=user_id,
+            title="Pago confirmado",
+            message=f"Tu pago para {challenge_title} ha sido confirmado. ¡Ya puedes enviar tus resultados!",
+            notification_type="payment"
+        )
+        
+        return jsonify({"message": "Pago confirmado exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
+
