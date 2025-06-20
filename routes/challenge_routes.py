@@ -11,11 +11,16 @@ challenge_bp = Blueprint('challenges', __name__)
 def create_challenge():
     try:
         data = request.get_json()
+        
+        # Convertir fechas ISO a datetime
+        start_date = datetime.fromisoformat(data['startDate'])
+        end_date = datetime.fromisoformat(data['endDate'])
+        
         challenge = Challenge(
             title=data['title'],
             description=data['description'],
-            start_date=datetime.fromisoformat(data['startDate']),
-            end_date=datetime.fromisoformat(data['endDate']),
+            start_date=start_date,  # Usar objeto datetime
+            end_date=end_date,      # Usar objeto datetime
             participation_cost=data['participationCost'],
             created_by=request.user['uid']
         )
@@ -29,6 +34,30 @@ def create_challenge():
     except Exception as e:
         return jsonify({"error": f"Error al crear reto: {str(e)}"}), 500
 
+@challenge_bp.route('/<challenge_id>', methods=['PUT'])
+@admin_required
+def update_challenge(challenge_id):
+    try:
+        data = request.get_json()
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        
+        if not challenge_ref.get().exists:
+            return jsonify({"error": "Reto no encontrado"}), 404
+        
+        updates = {
+            "title": data.get('title'),
+            "description": data.get('description'),
+            "participationCost": data.get('participationCost'),
+            "status": data.get('status')
+        }
+        
+        # Actualizar solo campos proporcionados
+        challenge_ref.update({k: v for k, v in updates.items() if v is not None})
+        
+        return jsonify({"message": "Reto actualizado exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al actualizar reto: {str(e)}"}), 500
+    
 @challenge_bp.route('', methods=['GET'])
 def get_challenges():
     try:
@@ -114,5 +143,4 @@ def set_winner(challenge_id):
         return jsonify({"message": "Winner set successfully"}), 200
     except Exception as e:
         return jsonify({"error": f"Error setting winner: {str(e)}"}), 500
-    
     

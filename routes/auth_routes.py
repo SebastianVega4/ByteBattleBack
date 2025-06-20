@@ -12,7 +12,7 @@ import requests
 auth_bp = Blueprint('auth', __name__)
 
 db = firestore.client()
-
+    
 @auth_bp.route('/register', methods=['POST'])
 def register_user_route():
     try:
@@ -108,68 +108,75 @@ def login_user_route():
         password = data.get('password')
         
         if not email or not password:
+            return jsonify({"success": False, "message": "Email y contraseña son requeridos"}), 400
+        
+        firebase_key = os.getenv('FIREBASE_API_KEY')
+        
+        # Depuración: Verificar si la clave está configurada
+        print(f"Firebase API Key: {firebase_key}")
+        
+        if not firebase_key:
             return jsonify({
                 "success": False,
-                "message": "Email y contraseña son requeridos"
-            }), 400
+                "message": "Configuración del servidor incompleta: FIREBASE_API_KEY no está configurada"
+            }), 500
+            
+        auth_url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebase_key}'
+        auth_response = requests.post(auth_url, json={
+            'email': email,
+            'password': password,
+            'returnSecureToken': True
+        })
         
-        # Verificar si el usuario existe en Firestore
-        users_ref = db.collection('users')
-        query = users_ref.where('email', '==', email).limit(1).get()
+        # Depuración: Verificar respuesta de Firebase
+        print(f"Firebase response: {auth_response.status_code} - {auth_response.text}")
         
-        if not query:
-            return jsonify({
-                "success": False,
-                "message": "Usuario no encontrado"
-            }), 404
+        if auth_response.status_code != 200:
+            error_data = auth_response.json()
+            error_message = error_data.get('error', {}).get('message', 'Credenciales inválidas')
+            return jsonify({"success": False, "message": error_message}), 401
         
-        user_doc = query[0]
+        # Obtener datos del usuario
+        auth_data = auth_response.json()
+        id_token = auth_data['idToken']
+        uid = auth_data['localId']
+        
+        # Obtener datos adicionales de Firestore
+        user_ref = db.collection('users').document(uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            return jsonify({"success": False, "message": "Usuario no encontrado"}), 404
+        
         user_data = user_doc.to_dict()
-        uid = user_doc.id
         
-        # Verificar si el usuario está baneado
         if user_data.get('isBanned', False):
-            return jsonify({
-                "success": False,
-                "message": "Tu cuenta ha sido suspendida"
-            }), 403
+            return jsonify({"success": False, "message": "Tu cuenta ha sido suspendida"}), 403
         
-        # Autenticar con Firebase usando el SDK de Admin
-        try:
-            # Verificar credenciales
-            user = auth.get_user_by_email(email)
+        return jsonify({
+            "success": True,
+            "message": "Inicio de sesión exitoso",
+            "token": id_token,
+            "user": {
+                "uid": uid,
+                "email": email,
+                "username": user_data['username'],
+                "role": user_data.get('role', 'user'),
+                "isBanned": user_data.get('isBanned', False)
+            }
+        }), 200
             
-            # Crear token de sesión personalizado
-            custom_token = auth.create_custom_token(user.uid)
-            
-            # Convertir bytes a string
-            token_str = custom_token.decode('utf-8') if isinstance(custom_token, bytes) else custom_token
-            
-            # Respuesta exitosa
-            return jsonify({
-                "success": True,
-                "message": "Inicio de sesión exitoso",
-                "token": token_str,
-                "user": {
-                    "uid": uid,
-                    "email": email,
-                    "username": user_data['username'],
-                    "role": user_data.get('role', 'user'),
-                    "isBanned": user_data.get('isBanned', False)
-                }
-            }), 200
-            
-        except auth.UserNotFoundError:
+    except auth.UserNotFoundError:
             return jsonify({
                 "success": False,
                 "message": "Usuario no encontrado"
             }), 404
-        except ValueError:
+    except ValueError:
             return jsonify({
                 "success": False,
                 "message": "Contraseña incorrecta"
             }), 401
-        except FirebaseError as e:
+    except FirebaseError as e:
             return jsonify({
                 "success": False,
                 "message": f"Error de Firebase: {str(e)}"
@@ -181,15 +188,6 @@ def login_user_route():
             "message": f"Error interno: {str(e)}"
         }), 500
     
-@auth_bp.route('/admin/users', methods=['GET'])
-@admin_required
-def get_all_users():
-    try:
-        users_ref = db.collection('users')
-        users = [doc.to_dict() for doc in users_ref.stream()]
-        return jsonify(users), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
     
 @auth_bp.route('/set-admin-role', methods=['POST'])
 @admin_required

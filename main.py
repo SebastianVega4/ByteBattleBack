@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 from utils.firebase import initialize_firebase
 from routes.notification_routes import notification_bp
+from routes.admin_routes import admin_bp
 
 
 load_dotenv()
@@ -27,6 +28,7 @@ initialize_firebase()
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')
+app.register_blueprint(admin_bp, url_prefix='/admin')
 app.register_blueprint(challenge_bp, url_prefix='/challenges')
 app.register_blueprint(participation_bp, url_prefix='/participations')
 app.register_blueprint(notification_bp, url_prefix='/notifications')

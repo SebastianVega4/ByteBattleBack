@@ -4,19 +4,28 @@ from firebase_admin import auth
 from utils.firebase import db
 from utils.exceptions import UnauthorizedError, ForbiddenError
 
+# decorators.py
 def firebase_token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
+            print("Token de autenticación faltante en el encabezado")
             raise UnauthorizedError("Authentication token required")
         
         token = auth_header.split('Bearer ')[1]
         try:
+            print(f"Verificando token: {token}")
             decoded_token = auth.verify_id_token(token)
-            request.user = decoded_token
+            print(f"Token decodificado: {decoded_token}")
+
+            request.user = {
+                'uid': decoded_token['uid'],
+                'email': decoded_token.get('email', '')
+            }
             return f(*args, **kwargs)
         except auth.InvalidIdTokenError:
+            print("Token inválido")
             raise UnauthorizedError("Invalid token")
         except auth.ExpiredIdTokenError:
             raise UnauthorizedError("Token expired")

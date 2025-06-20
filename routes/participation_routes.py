@@ -87,7 +87,64 @@ def initiate_participation():
     except Exception as e:
         return jsonify({"error": f"Error al iniciar participación: {str(e)}"}), 500
     
+@participation_bp.route('/admin/pending-payments', methods=['GET'])
+@admin_required
+def get_pending_payments():
+    try:
+        participations_ref = db.collection('participations')
+        query = participations_ref.where('paymentStatus', '==', 'pending')
+        
+        participations = []
+        for doc in query.stream():
+            part_data = doc.to_dict()
+            part_data['id'] = doc.id
+            
+            # Get user data
+            user = db.collection('users').document(part_data['userId']).get()
+            if user.exists:
+                part_data['user'] = user.to_dict()
+            
+            # Get challenge data
+            challenge = db.collection('challenges').document(part_data['challengeId']).get()
+            if challenge.exists:
+                part_data['challenge'] = challenge.to_dict()
+            
+            participations.append(part_data)
+            
+        return jsonify(participations), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@participation_bp.route('/admin/pending-results', methods=['GET'])
+@admin_required
+def get_pending_results():
+    try:
+        participations_ref = db.collection('participations')
+        query = participations_ref.where('paymentStatus', '==', 'confirmed') \
+                                 .where('score', '>', 0)
+        
+        participations = []
+        for doc in query.stream():
+            part_data = doc.to_dict()
+            part_data['id'] = doc.id
+            
+            # Get challenge to check if it has a winner
+            challenge = db.collection('challenges').document(part_data['challengeId']).get()
+            if not challenge.exists or challenge.to_dict().get('winnerUserId'):
+                continue
+                
+            # Get user data
+            user = db.collection('users').document(part_data['userId']).get()
+            if user.exists:
+                part_data['user'] = user.to_dict()
+            
+            part_data['challenge'] = challenge.to_dict()
+            participations.append(part_data)
+            
+        return jsonify(participations), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
