@@ -9,6 +9,42 @@ from services.notification_service import send_notification, send_admin_notifica
 participation_bp = Blueprint('participations', __name__)
 MAX_CODE_LENGTH = 10000  # Límite de 10,000 caracteres para el código
 
+@participation_bp.route('', methods=['GET'])
+@admin_required
+def get_all_participations():
+    try:
+        challenge_id = request.args.get('challengeId', '')
+        status_filter = request.args.get('status', '')
+        
+        participations_ref = db.collection('participations')
+        
+        if challenge_id:
+            participations_ref = participations_ref.where('challengeId', '==', challenge_id)
+        
+        if status_filter:
+            participations_ref = participations_ref.where('paymentStatus', '==', status_filter)
+            
+        participations = []
+        for doc in participations_ref.stream():
+            part_data = doc.to_dict()
+            part_data['id'] = doc.id
+            
+            # Obtener datos del usuario
+            user = db.collection('users').document(part_data['userId']).get()
+            if user.exists:
+                part_data['user'] = user.to_dict()
+            
+            # Obtener datos del reto
+            challenge = db.collection('challenges').document(part_data['challengeId']).get()
+            if challenge.exists:
+                part_data['challenge'] = challenge.to_dict()
+            
+            participations.append(part_data)
+            
+        return jsonify(participations), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @participation_bp.route('', methods=['POST'])
 @firebase_token_required
 def initiate_participation():

@@ -181,6 +181,16 @@ def login_user_route():
             "message": f"Error interno: {str(e)}"
         }), 500
     
+@auth_bp.route('/admin/users', methods=['GET'])
+@admin_required
+def get_all_users():
+    try:
+        users_ref = db.collection('users')
+        users = [doc.to_dict() for doc in users_ref.stream()]
+        return jsonify(users), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @auth_bp.route('/set-admin-role', methods=['POST'])
 @admin_required
 def set_admin_role_route():

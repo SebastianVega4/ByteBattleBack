@@ -5,3 +5,5 @@ __pycache__/
 *.pyd
 *.DS_Store
 serviceAccountKey.json
+seed-database.js
+node_modules

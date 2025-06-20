@@ -81,3 +81,38 @@ def mark_challenge_as_paid(challenge_id):
         return jsonify({"message": "Reto marcado como pagado"}), 200
     except Exception as e:
         return jsonify({"error": f"Error al marcar como pagado: {str(e)}"}), 500
+    
+@challenge_bp.route('/<challenge_id>/winner', methods=['PUT'])
+@admin_required
+def set_winner(challenge_id):
+    try:
+        data = request.get_json()
+        winner_id = data.get('winnerId')
+        score = data.get('score')
+        
+        if not winner_id or not score:
+            return jsonify({"error": "winnerId and score are required"}), 400
+            
+        # Actualizar reto con ganador
+        db.collection('challenges').document(challenge_id).update({
+            "winnerUserId": winner_id
+        })
+        
+        # Actualizar participación del ganador
+        participations = db.collection('participations') \
+            .where('challengeId', '==', challenge_id) \
+            .where('userId', '==', winner_id) \
+            .limit(1) \
+            .stream()
+            
+        for part in participations:
+            part.reference.update({
+                "winner": True,
+                "score": score
+            })
+        
+        return jsonify({"message": "Winner set successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error setting winner: {str(e)}"}), 500
+    
+    
