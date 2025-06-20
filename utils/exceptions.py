@@ -39,9 +39,15 @@ def handle_error(e):
         response = jsonify(e.to_dict())
         response.status_code = e.status_code
         return response
+    
+    # Mostrar detalles del error en desarrollo
+    import traceback
+    traceback.print_exc()
+    
     response = jsonify({
         'message': 'An unexpected error occurred',
-        'error': str(e)
+        'error': str(e),
+        'type': type(e).__name__
     })
     response.status_code = 500
     return response

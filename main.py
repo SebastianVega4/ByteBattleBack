@@ -12,7 +12,15 @@ from routes.notification_routes import notification_bp
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app, 
+     supports_credentials=True,
+     resources={
+         r"/auth/*": {
+             "origins": ["http://localhost:4200"],
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"]
+         }
+     })
 
 # Initialize Firebase
 initialize_firebase()
