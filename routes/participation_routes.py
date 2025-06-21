@@ -53,6 +53,9 @@ def initiate_participation():
         challenge_id = data.get('challengeId')
         user_id = request.user['uid']
         
+        if not challenge_id:
+            return jsonify({"error": "Challenge ID is required"}), 400
+        
         # Verificar si el reto existe y está activo
         challenge_ref = db.collection('challenges').document(challenge_id)
         challenge = challenge_ref.get()
@@ -146,30 +149,47 @@ def get_pending_results():
         return jsonify({"error": str(e)}), 500
     
 
+# participation_routes.py
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
+    print(f"\n--- Nueva solicitud PUT ---")
+    print("Headers:", request.headers)
+    print("Token recibido:", request.headers.get('Authorization'))
+    print("User UID:", request.user['uid'])
+    print("Datos recibidos:", request.get_json())
     try:
         data = request.get_json()
         score = data.get('score')
         code = data.get('code')
         aceptaelreto_username = data.get('aceptaelretoUsername')
         
-        # Validar longitud del código
-        if code and len(code) > MAX_CODE_LENGTH:
-            raise ValidationError(f"El código excede el límite de {MAX_CODE_LENGTH} caracteres")
-        
-        # Verificar que la participación existe y pertenece al usuario
+        # Validaciones básicas
+        if not all([score, code, aceptaelreto_username]):
+            return jsonify({"error": "Faltan datos requeridos"}), 400
+
+        # Obtener participación
         participation_ref = db.collection('participations').document(participation_id)
         participation = participation_ref.get()
+        
         if not participation.exists:
             return jsonify({"error": "Participación no encontrada"}), 404
-        if participation.to_dict().get('userId') != request.user['uid']:
-            return jsonify({"error": "No autorizado"}), 403
+            
+        participation_data = participation.to_dict()
         
-        # Actualizar el usuario con el aceptaelretoUsername si no lo tiene
+        # Verificar que el usuario es el dueño de la participación
+        if participation_data['userId'] != request.user['uid']:
+            print(f"UID no coincide: {participation_data['userId']} != {request.user['uid']}")
+            return jsonify({"error": "No autorizado"}), 403
+            
+        # Verificar que el pago está confirmado
+        if not participation_data.get('isPaid', False):
+            return jsonify({"error": "El pago no ha sido confirmado"}), 400
+            
+        # Actualizar el usuario con el aceptaelretoUsername si no existe
         user_ref = db.collection('users').document(request.user['uid'])
         user = user_ref.get()
+        
         if user.exists and not user.to_dict().get('aceptaelretoUsername'):
             user_ref.update({
                 "aceptaelretoUsername": aceptaelreto_username,
@@ -178,18 +198,17 @@ def submit_score_and_code(participation_id):
         
         # Actualizar participación
         participation_ref.update({
-            "score": score,
+            "score": int(score),
             "code": code,
             "aceptaelretoUsername": aceptaelreto_username,
             "submissionDate": firestore.SERVER_TIMESTAMP
         })
         
         return jsonify({"message": "Resultados enviados exitosamente"}), 200
-    except ValidationError as e:
-        return jsonify({"error": str(e)}), 400
+        
     except Exception as e:
+        print(f"Error en submit_score_and_code: {str(e)}")
         return jsonify({"error": f"Error al enviar resultados: {str(e)}"}), 500
-         
 
 @participation_bp.route('/<participation_id>/code', methods=['GET'])
 def get_participant_code(participation_id):
@@ -250,4 +269,34 @@ def confirm_payment(participation_id):
         return jsonify({"message": "Pago confirmado exitosamente"}), 200
     except Exception as e:
         return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
-
+    
+@participation_bp.route('/<participation_id>/notify-payment', methods=['POST'])
+@firebase_token_required
+def notify_payment(participation_id):
+    try:
+        # Verificar que la participación existe y pertenece al usuario
+        participation_ref = db.collection('participations').document(participation_id)
+        participation = participation_ref.get()
+        
+        if not participation.exists:
+            return jsonify({"error": "Participación no encontrada"}), 404
+            
+        if participation.to_dict()['userId'] != request.user['uid']:
+            return jsonify({"error": "No autorizado"}), 403
+            
+        # Actualizar estado a "pending" (aunque ya debería estarlo)
+        participation_ref.update({
+            "paymentStatus": "pending",
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
+        # Notificar a los administradores
+        send_admin_notification(
+            title="Nuevo pago pendiente de verificación",
+            message=f"El usuario {request.user.get('email')} ha notificado un pago para la participación {participation_id}."
+        )
+        
+        return jsonify({"message": "Notificación de pago enviada a los administradores"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al notificar pago: {str(e)}"}), 500
+    
