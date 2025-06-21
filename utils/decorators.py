@@ -35,10 +35,25 @@ def firebase_token_required(f):
 
 def admin_required(f):
     @wraps(f)
-    @firebase_token_required
     def decorated_function(*args, **kwargs):
-        user_doc = db.collection('users').document(request.user['uid']).get()
-        if not user_doc.exists or user_doc.to_dict().get('role') != 'admin':
-            raise ForbiddenError("Admin access required")
+        # Verificar el header Authorization
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Token de autenticación requerido"}), 401
+
+        token = auth_header.split(' ')[1]
+        try:
+            # Verificar el token con Firebase Admin
+            decoded_token = auth.verify_id_token(token)
+            request.user = decoded_token  # Almacenar el usuario en el request
+
+            # Verificar si el usuario es admin (usando Firestore)
+            user_ref = db.collection('users').document(decoded_token['uid']).get()
+            if not user_ref.exists or user_ref.to_dict().get('role') != 'admin':
+                return jsonify({"error": "Se requieren privilegios de administrador"}), 403
+
+        except Exception as e:
+            return jsonify({"error": f"Token inválido: {str(e)}"}), 401
+
         return f(*args, **kwargs)
     return decorated_function

@@ -1,4 +1,3 @@
-from flask import Flask
 from flask_cors import CORS
 from routes.auth_routes import auth_bp
 from routes.challenge_routes import challenge_bp
@@ -8,6 +7,7 @@ from dotenv import load_dotenv
 from utils.firebase import initialize_firebase
 from routes.notification_routes import notification_bp
 from routes.admin_routes import admin_bp
+from flask import Flask, request, jsonify, make_response
 
 
 load_dotenv()
@@ -15,17 +15,14 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, 
      supports_credentials=True,
-     resources={
-         r"/*": {
-             "origins": ["http://localhost:4200"],
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"]
-         }
-     })
+     origins=["http://localhost:4200"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS" ],
+     allow_headers=["Content-Type", "Authorization"]
+)
 
 # Initialize Firebase
 initialize_firebase()
-
+    
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(admin_bp, url_prefix='/admin')

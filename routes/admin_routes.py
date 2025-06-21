@@ -10,17 +10,18 @@ admin_bp = Blueprint('admin', __name__)
 @admin_required
 def get_all_users():
     try:
-        page = int(request.args.get('pageIndex', 0))
-        limit = int(request.args.get('pageSize', 10))
+        page_index = int(request.args.get('pageIndex', 0))
+        page_size = int(request.args.get('pageSize', 10))
         
+        # Usar nombres de parámetros consistentes
         users_ref = db.collection('users')
         total_docs = users_ref.count().get()[0][0].value
         
         # Usar cursor para paginación eficiente
-        query = users_ref.order_by('createdAt').limit(limit)
+        query = users_ref.order_by('createdAt').limit(page_size)
         
-        if page > 0:
-            last_doc = users_ref.order_by('createdAt').offset((page) * limit - 1).limit(1).get()[0]
+        if page_index > 0:
+            last_doc = users_ref.order_by('createdAt').offset((page_index) * page_size - 1).limit(1).get()[0]
             query = query.start_after(last_doc)
         
         users = []
