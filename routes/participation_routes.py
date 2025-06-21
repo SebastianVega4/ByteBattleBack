@@ -145,6 +145,7 @@ def get_pending_results():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
@@ -152,6 +153,7 @@ def submit_score_and_code(participation_id):
         data = request.get_json()
         score = data.get('score')
         code = data.get('code')
+        aceptaelreto_username = data.get('aceptaelretoUsername')
         
         # Validar longitud del código
         if code and len(code) > MAX_CODE_LENGTH:
@@ -165,10 +167,20 @@ def submit_score_and_code(participation_id):
         if participation.to_dict().get('userId') != request.user['uid']:
             return jsonify({"error": "No autorizado"}), 403
         
-        # Actualizar participación (ahora guardamos el código directamente)
+        # Actualizar el usuario con el aceptaelretoUsername si no lo tiene
+        user_ref = db.collection('users').document(request.user['uid'])
+        user = user_ref.get()
+        if user.exists and not user.to_dict().get('aceptaelretoUsername'):
+            user_ref.update({
+                "aceptaelretoUsername": aceptaelreto_username,
+                "updatedAt": firestore.SERVER_TIMESTAMP
+            })
+        
+        # Actualizar participación
         participation_ref.update({
             "score": score,
-            "code": code,  # Guardamos el código como texto plano
+            "code": code,
+            "aceptaelretoUsername": aceptaelreto_username,
             "submissionDate": firestore.SERVER_TIMESTAMP
         })
         
@@ -177,6 +189,7 @@ def submit_score_and_code(participation_id):
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Error al enviar resultados: {str(e)}"}), 500
+         
 
 @participation_bp.route('/<participation_id>/code', methods=['GET'])
 def get_participant_code(participation_id):

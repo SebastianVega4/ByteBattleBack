@@ -187,3 +187,24 @@ def login_user_route():
             "success": False,
             "message": f"Error interno: {str(e)}"
         }), 500
+    
+@auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
+def update_aceptaelreto_username(user_id):
+    try:
+        if request.user['uid'] != user_id and request.user.get('role') != 'admin':
+            return jsonify({"error": "No autorizado"}), 403
+            
+        data = request.get_json()
+        username = data.get('username')
+        
+        if not username:
+            return jsonify({"error": "Username es requerido"}), 400
+            
+        db.collection('users').document(user_id).update({
+            "aceptaelretoUsername": username,
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({"message": "Username actualizado exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
