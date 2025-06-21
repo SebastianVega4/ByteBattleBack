@@ -187,31 +187,3 @@ def login_user_route():
             "success": False,
             "message": f"Error interno: {str(e)}"
         }), 500
-    
-    
-@auth_bp.route('/set-admin-role', methods=['POST'])
-@admin_required
-def set_admin_role_route():
-    try:
-        from functions.auth_functions import set_admin_role
-        data = request.get_json()
-        user_id = data.get('uid')
-        current_user_id = request.user['uid']
-        result = set_admin_role(user_id, current_user_id)
-        return jsonify(result), 200
-    except Exception as e:
-        return handle_error(e)
-
-@auth_bp.route('/ban-user', methods=['POST'])
-@admin_required
-def ban_user_route():
-    try:
-        from functions.auth_functions import ban_user
-        data = request.get_json()
-        user_id = data.get('uid')
-        is_banned = data.get('isBanned', True)
-        current_user_id = request.user['uid']
-        result = ban_user(user_id, is_banned, current_user_id)
-        return jsonify(result), 200
-    except Exception as e:
-        return handle_error(e)
