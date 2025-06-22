@@ -163,7 +163,7 @@ def get_challenge_participations(challenge_id):
         if not challenge_ref.get().exists:
             return jsonify({"error": "Reto no encontrado"}), 404
 
-        # Obtener participaciones del reto
+        # Obtener TODAS las participaciones del reto
         participations_ref = db.collection('participations').where('challengeId', '==', challenge_id)
         participations = []
         
@@ -178,6 +178,9 @@ def get_challenge_participations(challenge_id):
             
             participations.append(part_data)
             
+        # Ordenar por puntaje descendente (los nulls van al final)
+        participations.sort(key=lambda x: (-x.get('score', float('-inf')) if x.get('score') is not None else float('inf')))
+        
         return jsonify(participations), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
