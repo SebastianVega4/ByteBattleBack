@@ -2,7 +2,8 @@ from datetime import datetime
 from firebase_admin import firestore
 
 class Challenge:
-    def __init__(self, title, description, start_date, end_date, participation_cost, created_by):
+    def __init__(self, title, description, start_date, end_date, participation_cost, created_by, id=None):
+        self.id = id
         self.title = title
         self.description = description
         self.start_date = start_date
@@ -16,7 +17,7 @@ class Challenge:
         self.created_by = created_by
 
     def to_dict(self):
-        return {
+        data = {
             "title": self.title,
             "description": self.description,
             "startDate": self.start_date,
@@ -29,3 +30,6 @@ class Challenge:
             "createdAt": self.created_at,
             "createdBy": self.created_by
         }
+        if self.id:
+            data['id'] = self.id
+        return data

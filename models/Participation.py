@@ -1,6 +1,5 @@
 from firebase_admin import firestore
 
-# En Participation.py
 class Participation:
     def __init__(self, user_id, challenge_id):
         self.user_id = user_id

@@ -13,12 +13,15 @@ MAX_CODE_LENGTH = 10000  # Límite de 10,000 caracteres para el código
 @admin_required
 def get_all_participations():
     try:
-        challenge_id = request.args.get('challengeId', '')
+        challenge_id = request.args.get('challengeId')
         status_filter = request.args.get('status', '')
         
         participations_ref = db.collection('participations')
         
-        if challenge_id:
+        # Validar que si se proporciona challengeId, no esté vacío
+        if challenge_id is not None:  # Cambiado para distinguir entre None y ''
+            if not challenge_id:  # Si es cadena vacía
+                return jsonify({"error": "Challenge ID no puede estar vacío"}), 400
             participations_ref = participations_ref.where('challengeId', '==', challenge_id)
         
         if status_filter:
@@ -56,17 +59,44 @@ def initiate_participation():
         if not challenge_id:
             return jsonify({"error": "Challenge ID is required"}), 400
         
-        # Verificar si el reto existe y está activo
+        # Verificar si el reto existe
         challenge_ref = db.collection('challenges').document(challenge_id)
         challenge = challenge_ref.get()
+        
         if not challenge.exists:
             return jsonify({"error": "Reto no encontrado"}), 404
-        if challenge.to_dict().get('status') != 'activo':
-            return jsonify({"error": "El reto no está activo"}), 400
+            
+        challenge_data = challenge.to_dict()
         
-        # Crear participación
-        participation = Participation(user_id, challenge_id)
-        _, doc_ref = db.collection('participations').add(participation.to_dict())
+        # Verificar que el reto está activo
+        if challenge_data.get('status') != 'activo':
+            return jsonify({"error": "El reto no está activo"}), 400
+            
+        # Verificar que el usuario no haya participado ya
+        existing_participation = db.collection('participations') \
+            .where('userId', '==', user_id) \
+            .where('challengeId', '==', challenge_id) \
+            .limit(1) \
+            .get()
+            
+        if not existing_participation.empty:
+            return jsonify({"error": "Ya estás participando en este reto"}), 400
+            
+        # Crear nueva participación
+        new_participation = {
+            "userId": user_id,
+            "challengeId": challenge_id,
+            "score": None,
+            "codeContent": None,
+            "aceptaelretoUsername": None,
+            "submissionDate": None,
+            "isPaid": False,
+            "paymentStatus": "pending",
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "paymentConfirmationDate": None
+        }
+        
+        _, doc_ref = db.collection('participations').add(new_participation)
         
         # Notificar al usuario
         challenge_title = challenge.to_dict().get('title', 'el reto')

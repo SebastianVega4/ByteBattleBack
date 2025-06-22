@@ -7,7 +7,7 @@ from datetime import datetime
 challenge_bp = Blueprint('challenges', __name__)
 
 @challenge_bp.route('', methods=['POST'])
-@admin_required
+@firebase_token_required
 def create_challenge():
     try:
         data = request.get_json()
@@ -35,7 +35,7 @@ def create_challenge():
         return jsonify({"error": f"Error al crear reto: {str(e)}"}), 500
 
 @challenge_bp.route('/<challenge_id>', methods=['PUT'])
-@admin_required
+@firebase_token_required
 def update_challenge(challenge_id):
     try:
         data = request.get_json()
@@ -67,11 +67,16 @@ def get_challenges():
         if status:
             query = query.where('status', '==', status)
             
-        challenges = [doc.to_dict() | {"id": doc.id} for doc in query.stream()]
+        challenges = []
+        for doc in query.stream():
+            challenge_data = doc.to_dict()
+            challenge_data['id'] = doc.id  # Incluir el ID del documento
+            challenges.append(challenge_data)
+            
         return jsonify(challenges), 200
     except Exception as e:
         return jsonify({"error": f"Error al obtener retos: {str(e)}"}), 500
-
+    
 @challenge_bp.route('/<challenge_id>', methods=['GET'])
 def get_challenge(challenge_id):
     try:
@@ -83,7 +88,7 @@ def get_challenge(challenge_id):
         return jsonify({"error": f"Error al obtener reto: {str(e)}"}), 500
 
 @challenge_bp.route('/<challenge_id>/status', methods=['PUT'])
-@admin_required
+@firebase_token_required
 def update_challenge_status(challenge_id):
     try:
         data = request.get_json()
@@ -101,7 +106,7 @@ def update_challenge_status(challenge_id):
         return jsonify({"error": f"Error al actualizar estado: {str(e)}"}), 500
 
 @challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
-@admin_required
+@firebase_token_required
 def mark_challenge_as_paid(challenge_id):
     try:
         db.collection('challenges').document(challenge_id).update({
@@ -112,7 +117,7 @@ def mark_challenge_as_paid(challenge_id):
         return jsonify({"error": f"Error al marcar como pagado: {str(e)}"}), 500
     
 @challenge_bp.route('/<challenge_id>/winner', methods=['PUT'])
-@admin_required
+@firebase_token_required
 def set_winner(challenge_id):
     try:
         data = request.get_json()
@@ -144,3 +149,29 @@ def set_winner(challenge_id):
     except Exception as e:
         return jsonify({"error": f"Error setting winner: {str(e)}"}), 500
     
+@challenge_bp.route('/<challenge_id>/participations', methods=['GET'])
+def get_challenge_participations(challenge_id):
+    try:
+        # Verificar que el reto existe
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        if not challenge_ref.get().exists:
+            return jsonify({"error": "Reto no encontrado"}), 404
+
+        # Obtener participaciones del reto
+        participations_ref = db.collection('participations').where('challengeId', '==', challenge_id)
+        participations = []
+        
+        for doc in participations_ref.stream():
+            part_data = doc.to_dict()
+            part_data['id'] = doc.id
+            
+            # Obtener datos del usuario
+            user_ref = db.collection('users').document(part_data['userId']).get()
+            if user_ref.exists:
+                part_data['user'] = user_ref.to_dict()
+            
+            participations.append(part_data)
+            
+        return jsonify(participations), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
