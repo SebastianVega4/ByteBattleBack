@@ -279,7 +279,63 @@ def get_participant_code(participation_id):
     except Exception as e:
         return jsonify({"error": f"Error al obtener código: {str(e)}"}), 500
 
-# Modifica la función confirm_payment
+@participation_bp.route('/<participation_id>/notify-payment', methods=['POST'])
+@firebase_token_required
+def notify_payment(participation_id):
+    try:
+        # Verificar que la participación existe y pertenece al usuario
+        participation_ref = db.collection('participations').document(participation_id)
+        participation = participation_ref.get()
+        
+        if not participation.exists:
+            return jsonify({"error": "Participación no encontrada"}), 404
+            
+        if participation.to_dict()['userId'] != request.user['uid']:
+            return jsonify({"error": "No autorizado"}), 403
+            
+        # Actualizar estado a "pending" (aunque ya debería estarlo)
+        participation_ref.update({
+            "paymentStatus": "pending",
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
+        # Notificar a los administradores
+        send_admin_notification(
+            title="Nuevo pago pendiente de verificación",
+            message=f"El usuario {request.user.get('email')} ha notificado un pago para la participación {participation_id}."
+        )
+        
+        return jsonify({"message": "Notificación de pago enviada a los administradores"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al notificar pago: {str(e)}"}), 500
+    
+@participation_bp.route('/status/<status>', methods=['GET'])
+@admin_required
+def get_participations_by_status(status):
+    try:
+        participations_ref = db.collection('participations').where('paymentStatus', '==', status)
+        participations = []
+        
+        for doc in participations_ref.stream():
+            part_data = doc.to_dict()
+            part_data['id'] = doc.id
+            
+            # Obtener datos del usuario
+            user_ref = db.collection('users').document(part_data['userId']).get()
+            if user_ref.exists:
+                part_data['user'] = user_ref.to_dict()
+            
+            # Obtener datos del reto
+            challenge = db.collection('challenges').document(part_data['challengeId']).get()
+            if challenge.exists:
+                part_data['challenge'] = challenge.to_dict()
+            
+            participations.append(part_data)
+            
+        return jsonify(participations), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @participation_bp.route('/<participation_id>/confirm-payment', methods=['PUT'])
 @admin_required
 def confirm_payment(participation_id):
@@ -314,34 +370,3 @@ def confirm_payment(participation_id):
         return jsonify({"message": "Pago confirmado exitosamente"}), 200
     except Exception as e:
         return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
-    
-@participation_bp.route('/<participation_id>/notify-payment', methods=['POST'])
-@firebase_token_required
-def notify_payment(participation_id):
-    try:
-        # Verificar que la participación existe y pertenece al usuario
-        participation_ref = db.collection('participations').document(participation_id)
-        participation = participation_ref.get()
-        
-        if not participation.exists:
-            return jsonify({"error": "Participación no encontrada"}), 404
-            
-        if participation.to_dict()['userId'] != request.user['uid']:
-            return jsonify({"error": "No autorizado"}), 403
-            
-        # Actualizar estado a "pending" (aunque ya debería estarlo)
-        participation_ref.update({
-            "paymentStatus": "pending",
-            "updatedAt": firestore.SERVER_TIMESTAMP
-        })
-        
-        # Notificar a los administradores
-        send_admin_notification(
-            title="Nuevo pago pendiente de verificación",
-            message=f"El usuario {request.user.get('email')} ha notificado un pago para la participación {participation_id}."
-        )
-        
-        return jsonify({"message": "Notificación de pago enviada a los administradores"}), 200
-    except Exception as e:
-        return jsonify({"error": f"Error al notificar pago: {str(e)}"}), 500
-    
