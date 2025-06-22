@@ -89,3 +89,24 @@ def mark_notification_as_read(notification_id):
         return jsonify({"message": "Notificación marcada como leída"}), 200
     except Exception as e:
         return jsonify({"error": f"Error al marcar notificación: {str(e)}"}), 500
+    
+@notification_bp.route('/<notification_id>', methods=['DELETE'])
+@firebase_token_required
+def delete_notification(notification_id):
+    try:
+        notification_ref = db.collection('notifications').document(notification_id)
+        notification = notification_ref.get()
+        
+        if not notification.exists:
+            return jsonify({"error": "Notificación no encontrada"}), 404
+        
+        if notification.to_dict().get('userId') != request.user['uid']:
+            return jsonify({"error": "No autorizado"}), 403
+        
+        notification_ref.delete()
+        
+        return jsonify({"message": "Notificación eliminada"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al eliminar notificación: {str(e)}"}), 500
+
+    
