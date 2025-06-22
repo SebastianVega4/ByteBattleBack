@@ -53,11 +53,15 @@ def get_user_participations():
 @firebase_token_required
 def initiate_participation():
     try:
+        print("\n--- Iniciando participación ---")
         data = request.get_json()
+        print("Datos recibidos:", data)
+        
         challenge_id = data.get('challengeId')
         user_id = request.user['uid']
         
         if not challenge_id:
+            print("Error: Falta challengeId")
             return jsonify({"error": "Challenge ID is required"}), 400
         
         # Verificar si el reto existe
@@ -65,22 +69,25 @@ def initiate_participation():
         challenge = challenge_ref.get()
         
         if not challenge.exists:
+            print(f"Error: Reto {challenge_id} no encontrado")
             return jsonify({"error": "Reto no encontrado"}), 404
             
         challenge_data = challenge.to_dict()
         
         # Verificar que el reto está activo
         if challenge_data.get('status') != 'activo':
+            print("Error: Reto no está activo")
             return jsonify({"error": "El reto no está activo"}), 400
             
         # Verificar que el usuario no haya participado ya
-        existing_participation = db.collection('participations') \
+        existing_query = db.collection('participations') \
             .where('userId', '==', user_id) \
-            .where('challengeId', '==', challenge_id) \
-            .limit(1) \
-            .get()
+            .where('challengeId', '==', challenge_id)
             
+        existing_participation = existing_query.get()
+        
         if not existing_participation.empty:
+            print("Error: Usuario ya está participando")
             return jsonify({"error": "Ya estás participando en este reto"}), 400
             
         # Crear nueva participación
@@ -88,7 +95,7 @@ def initiate_participation():
             "userId": user_id,
             "challengeId": challenge_id,
             "score": None,
-            "codeContent": None,
+            "code": None,
             "aceptaelretoUsername": None,
             "submissionDate": None,
             "isPaid": False,
@@ -97,8 +104,11 @@ def initiate_participation():
             "paymentConfirmationDate": None
         }
         
-        _, doc_ref = db.collection('participations').add(new_participation)
+        # Agregar debug para los datos que se guardarán
+        print("Creando participación con datos:", new_participation)
         
+        _, doc_ref = db.collection('participations').add(new_participation)
+
         # Notificar al usuario
         challenge_title = challenge.to_dict().get('title', 'el reto')
         send_notification(
@@ -184,11 +194,6 @@ def get_pending_results():
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
-    print(f"\n--- Nueva solicitud PUT ---")
-    print("Headers:", request.headers)
-    print("Token recibido:", request.headers.get('Authorization'))
-    print("User UID:", request.user['uid'])
-    print("Datos recibidos:", request.get_json())
     try:
         data = request.get_json()
         score = data.get('score')

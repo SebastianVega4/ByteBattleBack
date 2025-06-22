@@ -10,14 +10,11 @@ def firebase_token_required(f):
     def decorated_function(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
-            print("Token de autenticación faltante en el encabezado")
             raise UnauthorizedError("Authentication token required")
         
         token = auth_header.split('Bearer ')[1]
         try:
-            print(f"Verificando token: {token}")
             decoded_token = auth.verify_id_token(token)
-            print(f"Token decodificado: {decoded_token}")
 
             request.user = {
                 'uid': decoded_token['uid'],
