@@ -1,3 +1,4 @@
+import traceback
 from flask import Blueprint, request, jsonify
 from models.Participation import Participation
 from utils.firebase import db
@@ -57,6 +58,10 @@ def initiate_participation():
         data = request.get_json()
         print("Datos recibidos:", data)
         
+        if not data:
+            print("Error: No se recibieron datos JSON")
+            return jsonify({"error": "Datos JSON requeridos"}), 400
+            
         challenge_id = data.get('challengeId')
         user_id = request.user['uid']
         
@@ -84,9 +89,9 @@ def initiate_participation():
             .where('userId', '==', user_id) \
             .where('challengeId', '==', challenge_id)
             
-        existing_participation = existing_query.get()
+        existing_participations = list(existing_query.stream())
         
-        if not existing_participation.empty:
+        if len(existing_participations) > 0:
             print("Error: Usuario ya está participando")
             return jsonify({"error": "Ya estás participando en este reto"}), 400
             
@@ -104,13 +109,14 @@ def initiate_participation():
             "paymentConfirmationDate": None
         }
         
-        # Agregar debug para los datos que se guardarán
         print("Creando participación con datos:", new_participation)
         
-        _, doc_ref = db.collection('participations').add(new_participation)
+        # Agregar la participación a Firestore
+        doc_ref = db.collection('participations').document()
+        doc_ref.set(new_participation)
 
         # Notificar al usuario
-        challenge_title = challenge.to_dict().get('title', 'el reto')
+        challenge_title = challenge_data.get('title', 'el reto')
         send_notification(
             user_id=user_id,
             title="Participación iniciada",
@@ -128,7 +134,10 @@ def initiate_participation():
             "message": "Participación iniciada. Realiza el pago según las instrucciones.",
             "participationId": doc_ref.id
         }), 201
+        
     except Exception as e:
+        print(f"Error completo en initiate_participation: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": f"Error al iniciar participación: {str(e)}"}), 500
     
 @participation_bp.route('/admin/pending-payments', methods=['GET'])
