@@ -15,24 +15,30 @@ def create_challenge():
         # Convertir fechas ISO a datetime
         start_date = datetime.fromisoformat(data['startDate'])
         end_date = datetime.fromisoformat(data['endDate'])
+        participation_cost = float(data['participationCost'])
         
         challenge = Challenge(
             title=data['title'],
             description=data['description'],
-            start_date=start_date,  # Usar objeto datetime
-            end_date=end_date,      # Usar objeto datetime
-            participation_cost=data['participationCost'],
+            start_date=start_date,
+            end_date=end_date,
+            participation_cost=participation_cost,
             created_by=request.user['uid']
         )
+        
+        # Establecer el premio total inicial igual al costo de participación
+        challenge.total_pot = participation_cost
         
         _, doc_ref = db.collection('challenges').add(challenge.to_dict())
         
         return jsonify({
             "message": "Reto creado exitosamente",
-            "challengeId": doc_ref.id
+            "challengeId": doc_ref.id,
+            "totalPot": participation_cost
         }), 201
     except Exception as e:
         return jsonify({"error": f"Error al crear reto: {str(e)}"}), 500
+    
 
 @challenge_bp.route('/<challenge_id>', methods=['PUT'])
 @firebase_token_required

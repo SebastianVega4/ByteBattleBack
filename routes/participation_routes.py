@@ -346,8 +346,19 @@ def confirm_payment(participation_id):
         if not participation.exists:
             return jsonify({"error": "Participación no encontrada"}), 404
             
-        user_id = participation.to_dict().get('userId')
-        challenge_id = participation.to_dict().get('challengeId')
+        participation_data = participation.to_dict()
+        user_id = participation_data.get('userId')
+        challenge_id = participation_data.get('challengeId')
+        
+        # Obtener el reto para actualizar el premio total
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        challenge = challenge_ref.get()
+        
+        if not challenge.exists:
+            return jsonify({"error": "Reto no encontrado"}), 404
+            
+        challenge_data = challenge.to_dict()
+        participation_cost = challenge_data.get('participationCost', 0)
         
         # Actualizar participación
         participation_ref.update({
@@ -356,9 +367,14 @@ def confirm_payment(participation_id):
             "paymentConfirmationDate": firestore.SERVER_TIMESTAMP
         })
         
+        # Actualizar el premio total del reto (incrementar)
+        challenge_ref.update({
+            "totalPot": firestore.Increment(participation_cost),
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
         # Notificar al usuario
-        challenge = db.collection('challenges').document(challenge_id).get()
-        challenge_title = challenge.to_dict().get('title', 'el reto')
+        challenge_title = challenge_data.get('title', 'el reto')
         
         send_notification(
             user_id=user_id,
@@ -367,8 +383,12 @@ def confirm_payment(participation_id):
             notification_type="payment"
         )
         
-        return jsonify({"message": "Pago confirmado exitosamente"}), 200
+        return jsonify({
+            "message": "Pago confirmado exitosamente. Premio total actualizado.",
+            "newTotalPot": challenge_data.get('totalPot', 0) + participation_cost
+        }), 200
     except Exception as e:
+        print(f"Error al confirmar pago: {str(e)}")
         return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
     
 @participation_bp.route('/<participation_id>', methods=['GET'])

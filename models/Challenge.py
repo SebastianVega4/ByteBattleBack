@@ -12,9 +12,10 @@ class Challenge:
         self.status = "próximo"  # próximo, activo, pasado
         self.is_paid_to_winner = False
         self.winner_user_id = None
-        self.total_pot = 0
+        self.total_pot = participation_cost
         self.created_at = firestore.SERVER_TIMESTAMP
         self.created_by = created_by
+        self.updated_at = firestore.SERVER_TIMESTAMP
 
     def to_dict(self):
         data = {
