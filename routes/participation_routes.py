@@ -10,43 +10,44 @@ participation_bp = Blueprint('participations', __name__)
 MAX_CODE_LENGTH = 10000  # Límite de 10,000 caracteres para el código
 
 @participation_bp.route('', methods=['GET'])
-@admin_required
-def get_all_participations():
+@firebase_token_required
+def get_user_participations():
     try:
-        challenge_id = request.args.get('challengeId')
-        status_filter = request.args.get('status', '')
+        # Obtener el ID del usuario desde el token o parámetro
+        requesting_user_id = request.user['uid']
+        target_user_id = request.args.get('userId')
         
-        participations_ref = db.collection('participations')
+        # Si no se especifica userId, usar el del usuario autenticado
+        if not target_user_id:
+            target_user_id = requesting_user_id
         
-        # Validar que si se proporciona challengeId, no esté vacío
-        if challenge_id is not None:  # Cambiado para distinguir entre None y ''
-            if not challenge_id:  # Si es cadena vacía
-                return jsonify({"error": "Challenge ID no puede estar vacío"}), 400
-            participations_ref = participations_ref.where('challengeId', '==', challenge_id)
+        # Verificar permisos
+        if requesting_user_id != target_user_id:
+            # Solo permitir a admins ver otras participaciones
+            user_ref = db.collection('users').document(requesting_user_id).get()
+            if not user_ref.exists or user_ref.to_dict().get('role') != 'admin':
+                return jsonify({"error": "No autorizado"}), 403
         
-        if status_filter:
-            participations_ref = participations_ref.where('paymentStatus', '==', status_filter)
-            
+        # Obtener participaciones
+        participations_ref = db.collection('participations').where('userId', '==', target_user_id)
         participations = []
+        
         for doc in participations_ref.stream():
             part_data = doc.to_dict()
             part_data['id'] = doc.id
             
-            # Obtener datos del usuario
-            user = db.collection('users').document(part_data['userId']).get()
-            if user.exists:
-                part_data['user'] = user.to_dict()
-            
             # Obtener datos del reto
-            challenge = db.collection('challenges').document(part_data['challengeId']).get()
-            if challenge.exists:
-                part_data['challenge'] = challenge.to_dict()
+            challenge_ref = db.collection('challenges').document(part_data['challengeId']).get()
+            if challenge_ref.exists:
+                part_data['challenge'] = challenge_ref.to_dict()
             
             participations.append(part_data)
-            
+        
         return jsonify(participations), 200
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error en get_user_participations: {str(e)}")
+        return jsonify({"error": "Error al obtener participaciones"}), 500
     
 @participation_bp.route('', methods=['POST'])
 @firebase_token_required
