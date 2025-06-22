@@ -370,3 +370,35 @@ def confirm_payment(participation_id):
         return jsonify({"message": "Pago confirmado exitosamente"}), 200
     except Exception as e:
         return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
+    
+@participation_bp.route('/<participation_id>', methods=['GET'])
+@firebase_token_required
+def get_participation_details(participation_id):
+    try:
+        # Obtener la participación
+        participation_ref = db.collection('participations').document(participation_id)
+        participation = participation_ref.get()
+        
+        if not participation.exists:
+            return jsonify({"error": "Participación no encontrada"}), 404
+            
+        part_data = participation.to_dict()
+        
+        # Verificar que el usuario es el dueño o admin
+        if part_data['userId'] != request.user['uid']:
+            # Solo permitir a admins ver otras participaciones
+            user_ref = db.collection('users').document(request.user['uid']).get()
+            if not user_ref.exists or user_ref.to_dict().get('role') != 'admin':
+                return jsonify({"error": "No autorizado"}), 403
+        
+        # Obtener datos del reto
+        challenge_ref = db.collection('challenges').document(part_data['challengeId']).get()
+        if challenge_ref.exists:
+            part_data['challenge'] = challenge_ref.to_dict()
+        
+        part_data['id'] = participation_id
+        return jsonify(part_data), 200
+        
+    except Exception as e:
+        print(f"Error en get_participation_details: {str(e)}")
+        return jsonify({"error": "Error al obtener participación"}), 500
