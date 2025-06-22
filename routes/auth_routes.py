@@ -189,22 +189,41 @@ def login_user_route():
         }), 500
     
 @auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
+@firebase_token_required
 def update_aceptaelreto_username(user_id):
     try:
+        # Verificar permisos
         if request.user['uid'] != user_id and request.user.get('role') != 'admin':
             return jsonify({"error": "No autorizado"}), 403
             
         data = request.get_json()
+        if not data:
+            return jsonify({"error": "Datos JSON requeridos"}), 400
+            
         username = data.get('username')
-        
         if not username:
             return jsonify({"error": "Username es requerido"}), 400
             
-        db.collection('users').document(user_id).update({
+        # Verificar que el usuario existe
+        user_ref = db.collection('users').document(user_id)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+            
+        # Preparar datos de actualización
+        update_data = {
             "aceptaelretoUsername": username,
             "updatedAt": firestore.SERVER_TIMESTAMP
-        })
+        }
+        
+        # Actualizar el documento
+        user_ref.update(update_data)
         
         return jsonify({"message": "Username actualizado exitosamente"}), 200
+    except KeyError as e:
+        print(f"Error de clave: {str(e)}")
+        return jsonify({"error": "Datos de autenticación incompletos"}), 401
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Error al actualizar username: {str(e)}")
+        return jsonify({"error": f"Error interno: {str(e)}"}), 500
