@@ -54,13 +54,24 @@ def register_user_route():
             display_name=username
         )
 
-        # Crear documento en Firestore
+        # Crear documento en Firestore con todos los campos
         user_data = {
             "uid": user_record.uid,
             "email": email,
             "username": username,
             "role": "user",
             "isBanned": False,
+            "description": "",
+            "institution": "",
+            "professionalTitle": "",
+            "universityCareer": "",
+            "age": None,
+            "challengeWins": 0,
+            "totalParticipations": 0,
+            "totalEarnings": 0,
+            "profilePictureUrl": "",  # URL de imagen genérica por defecto
+            "emailVerified": False,
+            "verified": False,
             "createdAt": datetime.utcnow(),
             "updatedAt": datetime.utcnow()
         }
@@ -90,7 +101,6 @@ def register_user_route():
             "code": "weak_password"
         }), 400
     except Exception as e:
-        # Manejo detallado de errores
         error_message = f"Error en el registro: {str(e)}"
         print(error_message)
         return jsonify({
@@ -112,8 +122,6 @@ def login_user_route():
         
         firebase_key = os.getenv('FIREBASE_API_KEY')
         
-        # Depuración: Verificar si la clave está configurada
-        print(f"Firebase API Key: {firebase_key}")
         
         if not firebase_key:
             return jsonify({
@@ -127,10 +135,7 @@ def login_user_route():
             'password': password,
             'returnSecureToken': True
         })
-        
-        # Depuración: Verificar respuesta de Firebase
-        print(f"Firebase response: {auth_response.status_code} - {auth_response.text}")
-        
+     
         if auth_response.status_code != 200:
             error_data = auth_response.json()
             error_message = error_data.get('error', {}).get('message', 'Credenciales inválidas')
@@ -227,3 +232,30 @@ def update_aceptaelreto_username(user_id):
     except Exception as e:
         print(f"Error al actualizar username: {str(e)}")
         return jsonify({"error": f"Error interno: {str(e)}"}), 500
+
+@auth_bp.route('/<user_id>/increment-participations', methods=['PUT'])
+@admin_required
+def increment_user_participations(user_id):
+    try:
+        user_ref = db.collection('users').document(user_id)
+        
+        # Verificar que el usuario existe
+        if not user_ref.get().exists:
+            return jsonify({"success": False, "message": "Usuario no encontrado"}), 404
+            
+        # Incrementar el contador de participaciones
+        user_ref.update({
+            "totalParticipations": firestore.Increment(1),
+            "updatedAt": datetime.utcnow()
+        })
+        
+        return jsonify({
+            "success": True,
+            "message": "Participaciones incrementadas correctamente"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error al incrementar participaciones: {str(e)}"
+        }), 500
