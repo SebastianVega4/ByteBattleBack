@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, redirect, request, jsonify
 from utils.exceptions import handle_error
 from utils.decorators import firebase_token_required, admin_required
 from firebase_admin import auth, firestore
@@ -321,19 +321,27 @@ def send_email_verification():
         if user.email_verified:
             return jsonify({"message": "El email ya está verificado"}), 200
             
-        # Generar enlace de verificación
-        verification_link = auth.generate_email_verification_link(user.email)
-        
-        # Configurar email
+        # Configuración del email
         sender_email = os.getenv('EMAIL_SENDER')
         sender_password = os.getenv('EMAIL_PASSWORD')
         receiver_email = user.email
         
+        # Crear el mensaje
         message = MIMEMultipart()
-        message['From'] = sender_email
+        message['From'] = f"ByteBattle <{sender_email}>"
         message['To'] = receiver_email
         message['Subject'] = "Verifica tu email en ByteBattle"
         
+        # Generar enlace de verificación
+        verification_link = auth.generate_email_verification_link(
+            user.email,
+            action_code_settings=auth.ActionCodeSettings(
+                url=f"{os.getenv('FRONTEND_URL')}/profile/verify-email",
+                handle_code_in_app=False
+            )
+        )
+        
+        # Cuerpo del email
         body = f"""
         <h1>ByteBattle - Verificación de Email</h1>
         <p>Por favor haz clic en el siguiente enlace para verificar tu email:</p>
@@ -343,16 +351,43 @@ def send_email_verification():
         
         message.attach(MIMEText(body, 'html'))
         
-        # Enviar email
+        # Configurar y enviar email
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             server.send_message(message)
         
-        return jsonify({"message": "Email de verificación enviado"}), 200
+        return jsonify({
+            "message": "Email de verificación enviado",
+            "verificationLink": verification_link  # Para desarrollo
+        }), 200
         
     except Exception as e:
-        return jsonify({"error": f"Error al enviar email de verificación: {str(e)}"}), 500
+        print(f"Error al enviar email: {str(e)}")
+        return jsonify({
+            "error": "Error al enviar email de verificación",
+            "details": str(e)
+        }), 500
+    
+@auth_bp.route('/current-user', methods=['GET'])
+@firebase_token_required
+def get_current_user():
+    try:
+        user_id = request.user['uid']
+        user = auth.get_user(user_id)
+        user_ref = db.collection('users').document(user_id)
+        user_data = user_ref.get().to_dict()
+        
+        return jsonify({
+            "uid": user.uid,
+            "email": user.email,
+            "emailVerified": user.email_verified,
+            "username": user_data.get('username'),
+            # ... otros campos necesarios
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
 @auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
 @firebase_token_required
@@ -420,3 +455,12 @@ def increment_user_participations(user_id):
             "success": False,
             "message": f"Error al incrementar participaciones: {str(e)}"
         }), 500
+
+@auth_bp.route('/verify-email', methods=['GET'])
+def handle_email_verification():
+    try:
+        # Firebase maneja automáticamente la verificación cuando el usuario hace clic en el enlace
+        # Esta ruta es para redireccionar al frontend después de la verificación
+        return redirect(f"{os.getenv('FRONTEND_URL')}/profile/verify-email?verified=true")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
