@@ -8,6 +8,9 @@ from datetime import datetime
 from firebase_admin.exceptions import FirebaseError
 import os
 import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -277,9 +280,27 @@ def change_password(user_id):
             return jsonify({"error": "No autorizado"}), 403
             
         data = request.get_json()
-        if not data or not data.get('newPassword'):
-            return jsonify({"error": "Nueva contraseña requerida"}), 400
+        if not data or not data.get('currentPassword') or not data.get('newPassword'):
+            return jsonify({"error": "Contraseña actual y nueva contraseña requeridas"}), 400
             
+        # Verificar contraseña actual
+        firebase_key = os.getenv('FIREBASE_API_KEY')
+        auth_url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebase_key}'
+        
+        # Obtener email del usuario
+        user = auth.get_user(user_id)
+        email = user.email
+        
+        # Verificar credenciales actuales
+        auth_response = requests.post(auth_url, json={
+            'email': email,
+            'password': data['currentPassword'],
+            'returnSecureToken': True
+        })
+        
+        if auth_response.status_code != 200:
+            return jsonify({"error": "La contraseña actual es incorrecta"}), 401
+        
         # Cambiar contraseña en Firebase Auth
         auth.update_user(user_id, password=data['newPassword'])
         
@@ -289,7 +310,7 @@ def change_password(user_id):
         return jsonify({"error": f"Error de autenticación: {str(e)}"}), 400
     except Exception as e:
         return jsonify({"error": f"Error al cambiar contraseña: {str(e)}"}), 500
-
+    
 @auth_bp.route('/send-email-verification', methods=['POST'])
 @firebase_token_required
 def send_email_verification():
@@ -300,11 +321,33 @@ def send_email_verification():
         if user.email_verified:
             return jsonify({"message": "El email ya está verificado"}), 200
             
-        # Enviar email de verificación
+        # Generar enlace de verificación
         verification_link = auth.generate_email_verification_link(user.email)
         
-        # Aquí deberías implementar el envío real del email
-        print(f"Enlace de verificación para {user.email}: {verification_link}")
+        # Configurar email
+        sender_email = os.getenv('EMAIL_SENDER')
+        sender_password = os.getenv('EMAIL_PASSWORD')
+        receiver_email = user.email
+        
+        message = MIMEMultipart()
+        message['From'] = sender_email
+        message['To'] = receiver_email
+        message['Subject'] = "Verifica tu email en ByteBattle"
+        
+        body = f"""
+        <h1>ByteBattle - Verificación de Email</h1>
+        <p>Por favor haz clic en el siguiente enlace para verificar tu email:</p>
+        <a href="{verification_link}">Verificar Email</a>
+        <p>Si no solicitaste esto, por favor ignora este mensaje.</p>
+        """
+        
+        message.attach(MIMEText(body, 'html'))
+        
+        # Enviar email
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(message)
         
         return jsonify({"message": "Email de verificación enviado"}), 200
         
