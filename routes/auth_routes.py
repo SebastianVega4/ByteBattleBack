@@ -193,6 +193,124 @@ def login_user_route():
             "message": f"Error interno: {str(e)}"
         }), 500
     
+@auth_bp.route('/<user_id>', methods=['GET'])
+@firebase_token_required
+def get_user_profile(user_id):
+    try:
+        # Verificar permisos
+        if request.user['uid'] != user_id and request.user.get('role') != 'admin':
+            return jsonify({"error": "No autorizado"}), 403
+            
+        user_ref = db.collection('users').document(user_id)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+            
+        user_data = user_doc.to_dict()
+        
+        # No devolver datos sensibles
+        profile_data = {
+            "uid": user_data.get("uid"),
+            "username": user_data.get("username"),
+            "email": user_data.get("email"),
+            "description": user_data.get("description", ""),
+            "institution": user_data.get("institution", ""),
+            "professionalTitle": user_data.get("professionalTitle", ""),
+            "universityCareer": user_data.get("universityCareer", ""),
+            "age": user_data.get("age"),
+            "challengeWins": user_data.get("challengeWins", 0),
+            "totalParticipations": user_data.get("totalParticipations", 0),
+            "totalEarnings": user_data.get("totalEarnings", 0),
+            "profilePictureUrl": user_data.get("profilePictureUrl", ""),
+            "verified": user_data.get("verified", False),
+            "aceptaelretoUsername": user_data.get("aceptaelretoUsername", ""),
+            "createdAt": user_data.get("createdAt").isoformat() if user_data.get("createdAt") else None
+        }
+        
+        return jsonify(profile_data), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error al obtener perfil: {str(e)}"}), 500
+
+@auth_bp.route('/<user_id>', methods=['PUT'])
+@firebase_token_required
+def update_user_profile(user_id):
+    try:
+        # Verificar permisos
+        if request.user['uid'] != user_id:
+            return jsonify({"error": "No autorizado"}), 403
+            
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Datos JSON requeridos"}), 400
+            
+        # Campos permitidos para actualización
+        allowed_fields = [
+            "username", "description", "institution", 
+            "professionalTitle", "universityCareer", "age",
+            "profilePictureUrl", "aceptaelretoUsername"
+        ]
+        
+        update_data = {
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        }
+        
+        for field in allowed_fields:
+            if field in data:
+                update_data[field] = data[field]
+        
+        # Actualizar el documento
+        db.collection('users').document(user_id).update(update_data)
+        
+        return jsonify({"message": "Perfil actualizado exitosamente"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error al actualizar perfil: {str(e)}"}), 500
+
+@auth_bp.route('/<user_id>/change-password', methods=['POST'])
+@firebase_token_required
+def change_password(user_id):
+    try:
+        # Verificar permisos
+        if request.user['uid'] != user_id:
+            return jsonify({"error": "No autorizado"}), 403
+            
+        data = request.get_json()
+        if not data or not data.get('newPassword'):
+            return jsonify({"error": "Nueva contraseña requerida"}), 400
+            
+        # Cambiar contraseña en Firebase Auth
+        auth.update_user(user_id, password=data['newPassword'])
+        
+        return jsonify({"message": "Contraseña actualizada exitosamente"}), 200
+        
+    except auth.AuthError as e:
+        return jsonify({"error": f"Error de autenticación: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error al cambiar contraseña: {str(e)}"}), 500
+
+@auth_bp.route('/send-email-verification', methods=['POST'])
+@firebase_token_required
+def send_email_verification():
+    try:
+        user_id = request.user['uid']
+        user = auth.get_user(user_id)
+        
+        if user.email_verified:
+            return jsonify({"message": "El email ya está verificado"}), 200
+            
+        # Enviar email de verificación
+        verification_link = auth.generate_email_verification_link(user.email)
+        
+        # Aquí deberías implementar el envío real del email
+        print(f"Enlace de verificación para {user.email}: {verification_link}")
+        
+        return jsonify({"message": "Email de verificación enviado"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error al enviar email de verificación: {str(e)}"}), 500
+    
 @auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
 @firebase_token_required
 def update_aceptaelreto_username(user_id):
