@@ -210,13 +210,16 @@ def get_user_profile(user_id):
         if not user_doc.exists:
             return jsonify({"error": "Usuario no encontrado"}), 404
             
+        # Obtener datos de Firebase Auth para el estado de verificación
+        auth_user = auth.get_user(user_id)
+            
         user_data = user_doc.to_dict()
         
-        # No devolver datos sensibles
         profile_data = {
             "uid": user_data.get("uid"),
             "username": user_data.get("username"),
             "email": user_data.get("email"),
+            "emailVerified": auth_user.email_verified,
             "description": user_data.get("description", ""),
             "institution": user_data.get("institution", ""),
             "professionalTitle": user_data.get("professionalTitle", ""),
@@ -321,53 +324,34 @@ def send_email_verification():
         if user.email_verified:
             return jsonify({"message": "El email ya está verificado"}), 200
             
-        # Configuración del email
-        sender_email = os.getenv('EMAIL_SENDER')
-        sender_password = os.getenv('EMAIL_PASSWORD')
-        receiver_email = user.email
-        
-        # Crear el mensaje
-        message = MIMEMultipart()
-        message['From'] = f"ByteBattle <{sender_email}>"
-        message['To'] = receiver_email
-        message['Subject'] = "Verifica tu email en ByteBattle"
-        
         # Generar enlace de verificación
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
         verification_link = auth.generate_email_verification_link(
             user.email,
             action_code_settings=auth.ActionCodeSettings(
-                url=f"{os.getenv('FRONTEND_URL')}/profile/verify-email",
+                url=f"{frontend_url}/profile/verify-email?verified=true",
                 handle_code_in_app=False
             )
         )
         
-        # Cuerpo del email
-        body = f"""
-        <h1>ByteBattle - Verificación de Email</h1>
-        <p>Por favor haz clic en el siguiente enlace para verificar tu email:</p>
-        <a href="{verification_link}">Verificar Email</a>
-        <p>Si no solicitaste esto, por favor ignora este mensaje.</p>
-        """
-        
-        message.attach(MIMEText(body, 'html'))
-        
-        # Configurar y enviar email
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(sender_email, sender_password)
-            server.send_message(message)
+        # IMPORTANTE: Mostrar enlace en consola para desarrollo
+        print("\n" + "="*50)
+        print(f"ENLACE DE VERIFICACIÓN PARA {user.email}:")
+        print(verification_link)
+        print("="*50 + "\n")
         
         return jsonify({
-            "message": "Email de verificación enviado",
-            "verificationLink": verification_link  # Para desarrollo
+            "message": "Enlace de verificación generado (consola)",
+            "verificationLink": verification_link
         }), 200
         
     except Exception as e:
-        print(f"Error al enviar email: {str(e)}")
+        print(f"Error en send_email_verification: {str(e)}")
         return jsonify({
-            "error": "Error al enviar email de verificación",
+            "error": "Error al generar enlace de verificación",
             "details": str(e)
         }), 500
+
     
 @auth_bp.route('/current-user', methods=['GET'])
 @firebase_token_required
