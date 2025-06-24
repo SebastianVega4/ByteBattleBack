@@ -372,6 +372,68 @@ def get_current_user():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@auth_bp.route('/<user_id>/public', methods=['GET'])
+@firebase_token_required
+def get_public_profile(user_id):
+    try:
+        user_ref = db.collection('users').document(user_id)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+            
+        # Obtener datos de Firebase Auth para el estado de verificación
+        auth_user = auth.get_user(user_id)
+        
+        user_data = user_doc.to_dict()
+        
+        profile_data = {
+            "uid": user_data.get("uid"),
+            "username": user_data.get("username"),
+            "email": user_data.get("email"),
+            "emailVerified": auth_user.email_verified,
+            "description": user_data.get("description", ""),
+            "institution": user_data.get("institution", ""),
+            "professionalTitle": user_data.get("professionalTitle", ""),
+            "universityCareer": user_data.get("universityCareer", ""),
+            "challengeWins": user_data.get("challengeWins", 0),
+            "totalParticipations": user_data.get("totalParticipations", 0),
+            "profilePictureUrl": user_data.get("profilePictureUrl", ""),
+            "profileViews": user_data.get("profileViews", 0),
+            "createdAt": user_data.get("createdAt").isoformat() if user_data.get("createdAt") else None
+        }
+        
+        return jsonify(profile_data), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error al obtener perfil público: {str(e)}"}), 500
+
+@auth_bp.route('/<user_id>/increment-views', methods=['PUT'])
+@firebase_token_required
+def increment_profile_views(user_id):
+    try:
+        # Verificar que el usuario que incrementa no es el mismo
+        if request.user['uid'] == user_id:
+            return jsonify({"message": "No se incrementan vistas propias"}), 200
+            
+        user_ref = db.collection('users').document(user_id)
+        
+        # Verificar que el usuario existe
+        if not user_ref.get().exists:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+            
+        # Incrementar el contador de visitas
+        user_ref.update({
+            "profileViews": firestore.Increment(1),
+            "updatedAt": datetime.utcnow()
+        })
+        
+        return jsonify({"message": "Visitas incrementadas"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error al incrementar visitas: {str(e)}"}), 500
+
     
 @auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
 @firebase_token_required
