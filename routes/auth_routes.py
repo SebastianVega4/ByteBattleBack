@@ -510,3 +510,126 @@ def handle_email_verification():
         return redirect(f"{os.getenv('FRONTEND_URL')}/profile/verify-email?verified=true")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@auth_bp.route('/send-password-reset-email', methods=['POST'])
+def send_password_reset_email():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({"success": False, "message": "Email es requerido"}), 400
+        
+        # Verificar si el email existe
+        try:
+            user = auth.get_user_by_email(email)
+        except auth.UserNotFoundError:
+            # Por seguridad, no revelamos si el email existe o no
+            return jsonify({
+                "success": True,
+                "message": "Si el email existe, se ha enviado un correo con instrucciones"
+            }), 200
+        
+        # Generar enlace de restablecimiento
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
+        reset_link = auth.generate_password_reset_link(
+            email,
+            action_code_settings=auth.ActionCodeSettings(
+                url=f"{frontend_url}/reset-password",
+                handle_code_in_app=False
+            )
+        )
+        
+        # IMPORTANTE: Mostrar enlace en consola para desarrollo
+        print("\n" + "="*50)
+        print(f"ENLACE DE RECUPERACIÓN PARA {email}:")
+        print(reset_link)
+        print("="*50 + "\n")
+        
+        return jsonify({
+            "success": True,
+            "message": "Correo de recuperación enviado (consola)",
+            "resetLink": reset_link
+        }), 200
+        
+    except Exception as e:
+        print(f"Error en send_password_reset_email: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Error al enviar correo de recuperación",
+            "details": str(e)
+        }), 500
+    
+@auth_bp.route('/verify-password-reset-code', methods=['POST'])
+def verify_password_reset_code():
+    try:
+        data = request.get_json()
+        oob_code = data.get('oobCode')
+        
+        if not oob_code:
+            return jsonify({"success": False, "message": "Código de restablecimiento requerido"}), 400
+        
+        # Verificar el código
+        email = auth.verify_password_reset_code(oob_code)
+        
+        return jsonify({
+            "success": True,
+            "message": "Código válido",
+            "email": email
+        }), 200
+        
+    except auth.InvalidActionCodeError:
+        return jsonify({
+            "success": False,
+            "message": "El código de restablecimiento no es válido o ha expirado"
+        }), 400
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Error al verificar el código",
+            "details": str(e)
+        }), 500
+
+@auth_bp.route('/confirm-password-reset', methods=['POST'])
+def confirm_password_reset():
+    try:
+        data = request.get_json()
+        oob_code = data.get('oobCode')
+        new_password = data.get('newPassword')
+        
+        if not oob_code or not new_password:
+            return jsonify({"success": False, "message": "Código y nueva contraseña requeridos"}), 400
+        
+        if len(new_password) < 6:
+            return jsonify({"success": False, "message": "La contraseña debe tener al menos 6 caracteres"}), 400
+        
+        # Verificar el código y obtener el email
+        email = auth.verify_password_reset_code(oob_code)
+        
+        # Actualizar la contraseña
+        user = auth.get_user_by_email(email)
+        auth.update_user(user.uid, password=new_password)
+        
+        return jsonify({
+            "success": True,
+            "message": "Contraseña actualizada exitosamente"
+        }), 200
+        
+    except auth.InvalidActionCodeError:
+        return jsonify({
+            "success": False,
+            "message": "El código de restablecimiento no es válido o ha expirado"
+        }), 400
+    except auth.WeakPasswordError:
+        return jsonify({
+            "success": False,
+            "message": "La contraseña es demasiado débil"
+        }), 400
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Error al restablecer la contraseña",
+            "details": str(e)
+        }), 500
+
+    
