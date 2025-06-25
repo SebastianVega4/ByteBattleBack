@@ -2,6 +2,7 @@ from flask import Blueprint, redirect, request, jsonify
 from utils.exceptions import handle_error
 from utils.decorators import firebase_token_required, admin_required
 from firebase_admin import auth, firestore
+from utils.firebase import get_db
 from functions.auth_functions import register_user  # Importar función de registro
 import re
 from datetime import datetime
@@ -14,8 +15,9 @@ from email.mime.multipart import MIMEMultipart
 
 auth_bp = Blueprint('auth', __name__)
 
-db = firestore.client()
-    
+#db = firestore.client()
+db = get_db()
+
 @auth_bp.route('/register', methods=['POST'])
 def register_user_route():
     try:

@@ -40,18 +40,21 @@ CORS(
 )
 
 # Middleware para manejar OPTIONS (preflight)
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", ", ".join(allowed_origins))
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        response.headers.add("Access-Control-Allow-Credentials", "true")
-        return response
+@app.after_request
+def after_request(response):
+    # Asegúrate de que estos headers se apliquen a todas las respuestas
+    origin = request.headers.get('Origin', '')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
-# Initialize Firebase
-initialize_firebase()
+from utils.firebase import initialize_firebase
+firebase_app, db = initialize_firebase()
+#from utils.firebase import get_firebase
+#firebase_app, db = get_firebase()
     
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')

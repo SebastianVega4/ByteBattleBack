@@ -1,8 +1,10 @@
 from functools import wraps
 from flask import request, jsonify
 from firebase_admin import auth
-from utils.firebase import db
+from utils.firebase import get_db
 from utils.exceptions import UnauthorizedError, ForbiddenError
+
+db = get_db()
 
 # decorators.py
 def firebase_token_required(f):
