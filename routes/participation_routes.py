@@ -422,3 +422,36 @@ def get_participation_details(participation_id):
     except Exception as e:
         print(f"Error en get_participation_details: {str(e)}")
         return jsonify({"error": "Error al obtener participación"}), 500
+    
+@participation_bp.route('/by-challenges', methods=['GET'])
+def get_participations_by_challenge_ids():
+    try:
+        challenge_ids = request.args.get('challengeIds')
+        if not challenge_ids:
+            return jsonify({"error": "Se requieren IDs de retos"}), 400
+        
+        # Convertir a lista
+        challenge_ids_list = challenge_ids.split(',')
+        
+        # Consulta para obtener solo participaciones confirmadas
+        participations_ref = db.collection('participations')
+        
+        # Firestore no permite consultas con "IN" en más de 10 elementos, así que hacemos consultas separadas
+        participations = []
+        for chunk in [challenge_ids_list[i:i + 10] for i in range(0, len(challenge_ids_list), 10)]:
+            query = participations_ref.where('challengeId', 'in', chunk) \
+                                    .where('paymentStatus', '==', 'confirmed')
+            
+            for doc in query.stream():
+                part_data = {
+                    'id': doc.id,
+                    'challengeId': doc.get('challengeId'),
+                    'paymentStatus': doc.get('paymentStatus')
+                }
+                participations.append(part_data)
+        
+        return jsonify(participations), 200
+        
+    except Exception as e:
+        print(f"Error en get_participations_by_challenge_ids: {str(e)}")
+        return jsonify({"error": "Error al obtener participaciones"}), 500
