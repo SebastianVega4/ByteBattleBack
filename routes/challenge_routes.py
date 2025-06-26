@@ -23,11 +23,11 @@ def create_challenge():
             start_date=start_date,
             end_date=end_date,
             participation_cost=participation_cost,
-            created_by=request.user['uid']
+            created_by=request.user['uid'],
+            link_challenge=data.get('linkChallenge')
         )
         
-        # Establecer el premio total inicial igual al costo de participación
-        challenge.total_pot = participation_cost
+        challenge.total_pot = 0
         
         _, doc_ref = db.collection('challenges').add(challenge.to_dict())
         

@@ -373,6 +373,12 @@ def confirm_payment(participation_id):
             "updatedAt": firestore.SERVER_TIMESTAMP
         })
         
+        # Incrementar contador de participaciones del usuario
+        db.collection('users').document(user_id).update({
+            "totalParticipations": firestore.Increment(1),
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
         # Notificar al usuario
         challenge_title = challenge_data.get('title', 'el reto')
         
@@ -390,7 +396,7 @@ def confirm_payment(participation_id):
     except Exception as e:
         print(f"Error al confirmar pago: {str(e)}")
         return jsonify({"error": f"Error al confirmar pago: {str(e)}"}), 500
-    
+
 @participation_bp.route('/<participation_id>', methods=['GET'])
 @firebase_token_required
 def get_participation_details(participation_id):
