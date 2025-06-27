@@ -369,7 +369,21 @@ def get_current_user():
             "email": user.email,
             "emailVerified": user.email_verified,
             "username": user_data.get('username'),
-            # ... otros campos necesarios
+            "aceptaelretoUsername": user_data.get('aceptaelretoUsername'),
+            "role": user_data.get('role', 'user'),
+            "isBanned": user_data.get('isBanned', False),
+            "createdAt": user_data.get('createdAt'),
+            "profileViews": user_data.get('profileViews', 0),
+            "description": user_data.get('description'),
+            "institution": user_data.get('institution'),
+            "professionalTitle": user_data.get('professionalTitle'),
+            "universityCareer": user_data.get('universityCareer'),
+            "age": user_data.get('age'),
+            "challengeWins": user_data.get('challengeWins', 0),
+            "totalParticipations": user_data.get('totalParticipations', 0),
+            "totalEarnings": user_data.get('totalEarnings', 0),
+            "profilePictureUrl": user_data.get('profilePictureUrl'),
+            "verified": user_data.get('verified', False)
         }), 200
         
     except Exception as e:
