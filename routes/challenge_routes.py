@@ -3,6 +3,7 @@ from models.Challenge import Challenge
 from utils.firebase import db
 from utils.decorators import firebase_token_required, admin_required
 from datetime import datetime
+from firebase_admin import firestore
 
 challenge_bp = Blueprint('challenges', __name__)
 
@@ -115,117 +116,96 @@ def update_challenge_status(challenge_id):
 @firebase_token_required
 def set_winner(challenge_id):
     try:
+        # Obtener instancia de Firestore
+        db = firestore.client()
+        
         data = request.get_json()
         winner_id = data.get('winnerId')
         score = data.get('score')
         
         if not winner_id or not score:
-            return jsonify({"error": "winnerId and score are required"}), 400
-            
-        # Obtener referencias a las colecciones
+            return jsonify({"error": "Se requieren winnerId y score"}), 400
+
+        # Referencias a documentos
         challenge_ref = db.collection('challenges').document(challenge_id)
         user_ref = db.collection('users').document(winner_id)
         
-        # Usar transacción para asegurar consistencia
-        @firestore.transactional
-        def update_winner_transaction(transaction):
-            # Verificar que el reto existe
-            challenge = transaction.get(challenge_ref)
-            if not challenge.exists:
-                raise ValueError("Reto no encontrado")
-                
-            challenge_data = challenge.to_dict()
+        # Obtener datos del reto
+        challenge = challenge_ref.get()
+        if not challenge.exists:
+            return jsonify({"error": "Reto no encontrado"}), 404
             
-            # Verificar que no tenga ganador
-            if challenge_data.get('winnerUserId'):
-                raise ValueError("Este reto ya tiene un ganador")
-                
-            # Verificar que el usuario existe
-            user = transaction.get(user_ref)
-            if not user.exists:
-                raise ValueError("Usuario ganador no encontrado")
-                
-            # Buscar la participación (usando filter keyword para evitar warning)
-            participation_query = db.collection('participations') \
-                .where(filter=firestore.FieldFilter('challengeId', '==', challenge_id)) \
-                .where(filter=firestore.FieldFilter('userId', '==', winner_id)) \
-                .limit(1)
-                
-            participations = list(participation_query.stream())
-            if not participations:
-                raise ValueError("Participación no encontrada")
-                
-            participation_ref = participations[0].reference
-            
-            # Actualizar reto
-            transaction.update(challenge_ref, {
-                "winnerUserId": winner_id,
-                "updatedAt": firestore.SERVER_TIMESTAMP
-            })
-            
-            # Actualizar participación
-            transaction.update(participation_ref, {
-                "winner": True,
-                "score": score,
-                "updatedAt": firestore.SERVER_TIMESTAMP
-            })
-            
-            # Actualizar estadísticas del usuario
-            total_pot = challenge_data.get('totalPot', 0)
-            transaction.update(user_ref, {
-                "challengeWins": firestore.Increment(1),
-                "totalEarnings": firestore.Increment(total_pot),
-                "updatedAt": firestore.SERVER_TIMESTAMP
-            })
-            
-            return {
-                "challenge": challenge_data,
-                "user": user.to_dict(),
-                "totalPot": total_pot
-            }
+        challenge_data = challenge.to_dict()
         
-        # Ejecutar la transacción
-        result = update_winner_transaction(db.transaction())
+        # Verificar si ya tiene ganador
+        if challenge_data.get('winnerUserId'):
+            return jsonify({"error": "Este reto ya tiene un ganador"}), 400
+            
+        # Buscar participación del ganador
+        participations = db.collection('participations') \
+            .where('challengeId', '==', challenge_id) \
+            .where('userId', '==', winner_id) \
+            .limit(1) \
+            .stream()
+            
+        participation = next(participations, None)
+        if not participation:
+            return jsonify({"error": "Participación no encontrada"}), 404
+            
+        # Actualizaciones en batch para consistencia
+        batch = db.batch()
+        
+        # 1. Marcar ganador en el reto
+        batch.update(challenge_ref, {
+            'winnerUserId': winner_id,
+            'updatedAt': firestore.SERVER_TIMESTAMP
+        })
+        
+        # 2. Actualizar participación
+        batch.update(participation.reference, {
+            'winner': True,
+            'score': score,
+            'updatedAt': firestore.SERVER_TIMESTAMP
+        })
+        
+        # 3. Actualizar estadísticas del usuario
+        total_pot = challenge_data.get('totalPot', 0)
+        batch.update(user_ref, {
+            'challengeWins': firestore.Increment(1),
+            'totalEarnings': firestore.Increment(total_pot),
+            'updatedAt': firestore.SERVER_TIMESTAMP
+        })
+        
+        # Ejecutar todas las operaciones atómicamente
+        batch.commit()
+        
+        # Obtener nombre de usuario para notificación
+        user = user_ref.get().to_dict()
+        winner_username = user.get('username', 'un participante')
         
         # Notificar al ganador
         send_notification(
             user_id=winner_id,
             title="¡Has ganado un reto!",
-            message=f"Felicidades, has ganado el reto '{result['challenge']['title']}' con un premio de ${result['totalPot']}",
+            message=f"Felicidades, has ganado el reto '{challenge_data['title']}'",
             notification_type="challenge_win"
         )
-
-        # Notificar a otros participantes
-        participants = db.collection('participations') \
-            .where(filter=firestore.FieldFilter('challengeId', '==', challenge_id)) \
-            .stream()
-
-        winner_username = result['user'].get('username', 'un participante')
-        
-        for part in participants:
-            participant_id = part.to_dict()['userId']
-            if participant_id != winner_id:
-                send_notification(
-                    user_id=participant_id,
-                    title="Reto finalizado",
-                    message=f"El reto '{result['challenge']['title']}' ha finalizado. El ganador fue {winner_username}.",
-                    notification_type="challenge_end"
-                )
         
         return jsonify({
-            "message": "Ganador establecido correctamente",
+            "success": True,
+            "message": "Ganador asignado correctamente",
             "challengeId": challenge_id,
             "winnerId": winner_id,
-            "prizeAmount": result['totalPot']
+            "prizeAmount": total_pot
         }), 200
         
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
         print(f"Error al establecer ganador: {str(e)}")
-        return jsonify({"error": f"Error interno: {str(e)}"}), 500
-    
-    
+        return jsonify({
+            "success": False,
+            "error": f"Error interno: {str(e)}"
+        }), 500   
+
 @challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
 @firebase_token_required
 def mark_challenge_as_paid(challenge_id):
