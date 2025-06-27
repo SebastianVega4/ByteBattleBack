@@ -2,13 +2,14 @@ from datetime import datetime
 from firebase_admin import firestore
 
 class Challenge:
-    def __init__(self, title, description, start_date, end_date, participation_cost, created_by, id=None):
+    def __init__(self, title, description, start_date, end_date, participation_cost, created_by, id=None, link_challenge=None):
         self.id = id
         self.title = title
         self.description = description
         self.start_date = start_date
         self.end_date = end_date
         self.participation_cost = participation_cost
+        self.link_challenge = link_challenge  # Nuevo atributo
         self.status = "próximo"  # próximo, activo, pasado
         self.is_paid_to_winner = False
         self.winner_user_id = None
@@ -24,6 +25,7 @@ class Challenge:
             "startDate": self.start_date,
             "endDate": self.end_date,
             "participationCost": self.participation_cost,
+            "linkChallenge": self.link_challenge,  # Nuevo campo
             "status": self.status,
             "isPaidToWinner": self.is_paid_to_winner,
             "winnerUserId": self.winner_user_id,

@@ -146,9 +146,13 @@ def get_pending_results():
     try:
         # Obtener todas las participaciones con pago confirmado y puntaje asignado
         participations_ref = db.collection('participations')
-        query = participations_ref.where('paymentStatus', '==', 'confirmed') \
-                                 .where('score', '>', 0) \
-                                 .order_by('score', direction=firestore.Query.DESCENDING)
+        
+        # Usar parámetros nombrados para evitar el warning
+        query = participations_ref.where(
+            filter=firestore.FieldFilter('paymentStatus', '==', 'confirmed')
+        ).where(
+            filter=firestore.FieldFilter('score', '>', 0)
+        ).order_by('score', direction=firestore.Query.DESCENDING)
         
         pending_results = []
         
@@ -190,8 +194,7 @@ def get_pending_results():
             "error": "Error al obtener resultados pendientes",
             "details": str(e)
         }), 500
-
-# participation_routes.py
+    
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
 def submit_score_and_code(participation_id):
