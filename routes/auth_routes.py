@@ -172,7 +172,12 @@ def login_user_route():
                 "email": email,
                 "username": user_data['username'],
                 "role": user_data.get('role', 'user'),
-                "isBanned": user_data.get('isBanned', False)
+                "isBanned": user_data.get('isBanned', False),
+                "aceptaelretoUsername": user_data.get('aceptaelretoUsername'),
+                "createdAt": user_data.get('createdAt'),
+                "updatedAt": user_data.get('updatedAt'),
+                "profilePictureUrl": user_data.get('profilePictureUrl', ''),
+
             }
         }), 200
             
