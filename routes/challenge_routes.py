@@ -152,7 +152,8 @@ def set_winner(challenge_id):
         # 1. Marcar ganador en el reto
         batch.update(challenge_ref, {
             'winnerUserId': winner_id,
-            'status': 'pasado',  # Actualizar estado a pasado
+            'status': 'pasado', 
+            'isPaidToWinner': True,
             'updatedAt': firestore.SERVER_TIMESTAMP
         })
         
@@ -207,7 +208,8 @@ def set_winner(challenge_id):
             "message": "Ganador asignado correctamente",
             "challengeId": challenge_id,
             "winnerId": winner_id,
-            "prizeAmount": total_pot
+            "prizeAmount": total_pot,
+            "isPaid": True
         }), 200
         
     except Exception as e:
