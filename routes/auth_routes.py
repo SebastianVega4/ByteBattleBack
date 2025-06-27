@@ -15,6 +15,39 @@ from email.mime.multipart import MIMEMultipart
 
 auth_bp = Blueprint('auth', __name__)
 
+# Configuración de correo
+EMAIL_CONFIG = {
+    'sender': os.getenv('EMAIL_SENDER', 'no-reply@bytebattle.com'),
+    'reset_password_template': {
+        'subject': 'Restablece tu contraseña en ByteBattle',
+        'body': 'Hola,\n\nPara restablecer tu contraseña, haz clic en el siguiente enlace:\n{reset_link}\n\nSi no solicitaste este cambio, ignora este correo.\n\nEl equipo de ByteBattle'
+    },
+    'verify_email_template': {
+        'subject': 'Verifica tu correo en ByteBattle',
+        'body': 'Hola,\n\nPor favor verifica tu dirección de correo electrónico haciendo clic en el siguiente enlace:\n{verify_link}\n\nGracias,\nEl equipo de ByteBattle'
+    }
+}
+
+def send_email_via_sendgrid(to_email, subject, body):
+    """Función para enviar correos usando SendGrid"""
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail
+    
+    message = Mail(
+        from_email=EMAIL_CONFIG['sender'],
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=body
+    )
+    
+    try:
+        sg = SendGridAPIClient(os.getenv('SENDGRID_API_KEY'))
+        response = sg.send(message)
+        return response.status_code == 202
+    except Exception as e:
+        print(f"Error enviando correo: {str(e)}")
+        return False
+    
 #db = firestore.client()
 db = get_db()
 
@@ -322,40 +355,50 @@ def change_password(user_id):
         return jsonify({"error": f"Error al cambiar contraseña: {str(e)}"}), 500
     
 @auth_bp.route('/send-email-verification', methods=['POST'])
-@firebase_token_required
 def send_email_verification():
     try:
-        user_id = request.user['uid']
-        user = auth.get_user(user_id)
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
         
-        if user.email_verified:
-            return jsonify({"message": "El email ya está verificado"}), 200
-            
+        if not email:
+            return jsonify({"success": False, "message": "Email es requerido"}), 400
+        
+        try:
+            user = auth.get_user_by_email(email)
+            if user.email_verified:
+                return jsonify({"success": True, "message": "El email ya está verificado"}), 200
+        except auth.UserNotFoundError:
+            return jsonify({"success": False, "message": "Usuario no encontrado"}), 404
+        
         # Generar enlace de verificación
-        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
-        verification_link = auth.generate_email_verification_link(
-            user.email,
+        verify_link = auth.generate_email_verification_link(
+            email,
             action_code_settings=auth.ActionCodeSettings(
-                url=f"{frontend_url}/profile/verify-email?verified=true",
-                handle_code_in_app=False
+                url=f"{os.getenv('FRONTEND_URL')}/verify-email",
+                handle_code_in_app=True
             )
         )
         
-        # IMPORTANTE: Mostrar enlace en consola para desarrollo
-        print("\n" + "="*50)
-        print(f"ENLACE DE VERIFICACIÓN PARA {user.email}:")
-        print(verification_link)
-        print("="*50 + "\n")
+        # Enviar correo usando SendGrid
+        email_sent = send_email_via_sendgrid(
+            email,
+            EMAIL_CONFIG['verify_email_template']['subject'],
+            EMAIL_CONFIG['verify_email_template']['body'].format(verify_link=verify_link)
+        )
+        
+        if not email_sent:
+            raise Exception("Error al enviar correo mediante SendGrid")
         
         return jsonify({
-            "message": "Enlace de verificación generado (consola)",
-            "verificationLink": verification_link
+            "success": True,
+            "message": "Correo de verificación enviado"
         }), 200
         
     except Exception as e:
         print(f"Error en send_email_verification: {str(e)}")
         return jsonify({
-            "error": "Error al generar enlace de verificación",
+            "success": False,
+            "message": "Error al enviar correo de verificación",
             "details": str(e)
         }), 500
 
@@ -541,36 +584,37 @@ def send_password_reset_email():
         if not email:
             return jsonify({"success": False, "message": "Email es requerido"}), 400
         
-        # Verificar si el email existe
         try:
             user = auth.get_user_by_email(email)
         except auth.UserNotFoundError:
-            # Por seguridad, no revelamos si el email existe o no
+            # Por seguridad, no revelamos si el email existe
             return jsonify({
                 "success": True,
                 "message": "Si el email existe, se ha enviado un correo con instrucciones"
             }), 200
         
         # Generar enlace de restablecimiento
-        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:4200')
         reset_link = auth.generate_password_reset_link(
             email,
             action_code_settings=auth.ActionCodeSettings(
-                url=f"{frontend_url}/reset-password",
-                handle_code_in_app=False
+                url=f"{os.getenv('FRONTEND_URL')}/reset-password",
+                handle_code_in_app=True
             )
         )
         
-        # IMPORTANTE: Mostrar enlace en consola para desarrollo
-        print("\n" + "="*50)
-        print(f"ENLACE DE RECUPERACIÓN PARA {email}:")
-        print(reset_link)
-        print("="*50 + "\n")
+        # Enviar correo usando SendGrid
+        email_sent = send_email_via_sendgrid(
+            email,
+            EMAIL_CONFIG['reset_password_template']['subject'],
+            EMAIL_CONFIG['reset_password_template']['body'].format(reset_link=reset_link)
+        )
+        
+        if not email_sent:
+            raise Exception("Error al enviar correo mediante SendGrid")
         
         return jsonify({
             "success": True,
-            "message": "Correo de recuperación enviado (consola)",
-            "resetLink": reset_link
+            "message": "Correo de recuperación enviado"
         }), 200
         
     except Exception as e:
