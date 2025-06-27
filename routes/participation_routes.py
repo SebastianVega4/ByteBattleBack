@@ -140,64 +140,58 @@ def initiate_participation():
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": f"Error al iniciar participación: {str(e)}"}), 500
     
-@participation_bp.route('/admin/pending-payments', methods=['GET'])
-@admin_required
-def get_pending_payments():
-    try:
-        participations_ref = db.collection('participations')
-        query = participations_ref.where('paymentStatus', '==', 'pending')
-        
-        participations = []
-        for doc in query.stream():
-            part_data = doc.to_dict()
-            part_data['id'] = doc.id
-            
-            # Get user data
-            user = db.collection('users').document(part_data['userId']).get()
-            if user.exists:
-                part_data['user'] = user.to_dict()
-            
-            # Get challenge data
-            challenge = db.collection('challenges').document(part_data['challengeId']).get()
-            if challenge.exists:
-                part_data['challenge'] = challenge.to_dict()
-            
-            participations.append(part_data)
-            
-        return jsonify(participations), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@participation_bp.route('/admin/pending-results', methods=['GET'])
+@participation_bp.route('/pending-results', methods=['GET'])
 @admin_required
 def get_pending_results():
     try:
+        # Obtener todas las participaciones con pago confirmado y puntaje asignado
         participations_ref = db.collection('participations')
         query = participations_ref.where('paymentStatus', '==', 'confirmed') \
-                                 .where('score', '>', 0)
+                                 .where('score', '>', 0)  # Solo participaciones con score > 0
         
-        participations = []
+        pending_results = []
+        
         for doc in query.stream():
             part_data = doc.to_dict()
             part_data['id'] = doc.id
             
-            # Get challenge to check if it has a winner
-            challenge = db.collection('challenges').document(part_data['challengeId']).get()
-            if not challenge.exists or challenge.to_dict().get('winnerUserId'):
-                continue
+            # Obtener datos del reto asociado
+            challenge_ref = db.collection('challenges').document(part_data['challengeId'])
+            challenge = challenge_ref.get()
+            
+            if not challenge.exists:
+                continue  # Si el reto no existe, saltar esta participación
                 
-            # Get user data
-            user = db.collection('users').document(part_data['userId']).get()
-            if user.exists:
-                part_data['user'] = user.to_dict()
+            challenge_data = challenge.to_dict()
             
-            part_data['challenge'] = challenge.to_dict()
-            participations.append(part_data)
-            
-        return jsonify(participations), 200
+            # Solo incluir si el reto no tiene ganador asignado aún
+            if not challenge_data.get('winnerUserId'):
+                # Obtener datos del usuario
+                user_ref = db.collection('users').document(part_data['userId'])
+                user = user_ref.get()
+                
+                if user.exists:
+                    part_data['user'] = user.to_dict()
+                
+                part_data['challenge'] = challenge_data
+                pending_results.append(part_data)
+        
+        # Ordenar los resultados por score descendente
+        pending_results.sort(key=lambda x: x['score'], reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "count": len(pending_results),
+            "results": pending_results
+        }), 200
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
+        print(f"Error en get_pending_results: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Error al obtener resultados pendientes",
+            "details": str(e)
+        }), 500
 
 # participation_routes.py
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])

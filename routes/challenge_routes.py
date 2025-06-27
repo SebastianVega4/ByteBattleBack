@@ -111,17 +111,7 @@ def update_challenge_status(challenge_id):
     except Exception as e:
         return jsonify({"error": f"Error al actualizar estado: {str(e)}"}), 500
 
-@challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
-@firebase_token_required
-def mark_challenge_as_paid(challenge_id):
-    try:
-        db.collection('challenges').document(challenge_id).update({
-            "isPaidToWinner": True
-        })
-        return jsonify({"message": "Reto marcado como pagado"}), 200
-    except Exception as e:
-        return jsonify({"error": f"Error al marcar como pagado: {str(e)}"}), 500
-    
+# challenge_routes.py
 @challenge_bp.route('/<challenge_id>/winner', methods=['PUT'])
 @firebase_token_required
 def set_winner(challenge_id):
@@ -133,9 +123,21 @@ def set_winner(challenge_id):
         if not winner_id or not score:
             return jsonify({"error": "winnerId and score are required"}), 400
             
+        # Obtener el reto
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        challenge = challenge_ref.get().to_dict()
+        
+        if not challenge:
+            return jsonify({"error": "Reto no encontrado"}), 404
+            
+        # Verificar que el reto no tenga ya un ganador
+        if challenge.get('winnerUserId'):
+            return jsonify({"error": "Este reto ya tiene un ganador asignado"}), 400
+            
         # Actualizar reto con ganador
-        db.collection('challenges').document(challenge_id).update({
-            "winnerUserId": winner_id
+        challenge_ref.update({
+            "winnerUserId": winner_id,
+            "updatedAt": firestore.SERVER_TIMESTAMP
         })
         
         # Actualizar participación del ganador
@@ -148,12 +150,50 @@ def set_winner(challenge_id):
         for part in participations:
             part.reference.update({
                 "winner": True,
-                "score": score
+                "score": score,
+                "updatedAt": firestore.SERVER_TIMESTAMP
             })
         
-        return jsonify({"message": "Winner set successfully"}), 200
+        # Actualizar estadísticas del usuario ganador
+        user_ref = db.collection('users').document(winner_id)
+        user_ref.update({
+            "challengeWins": firestore.Increment(1),
+            "totalEarnings": firestore.Increment(challenge['totalPot']),
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({
+            "message": "Ganador establecido correctamente",
+            "challengeId": challenge_id,
+            "winnerId": winner_id,
+            "prizeAmount": challenge['totalPot']
+        }), 200
     except Exception as e:
-        return jsonify({"error": f"Error setting winner: {str(e)}"}), 500
+        return jsonify({"error": f"Error al establecer ganador: {str(e)}"}), 500
+
+@challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
+@firebase_token_required
+def mark_challenge_as_paid(challenge_id):
+    try:
+        # Verificar que el reto existe y tiene un ganador
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        challenge = challenge_ref.get().to_dict()
+        
+        if not challenge:
+            return jsonify({"error": "Reto no encontrado"}), 404
+            
+        if not challenge.get('winnerUserId'):
+            return jsonify({"error": "El reto no tiene un ganador asignado"}), 400
+            
+        # Marcar como pagado
+        challenge_ref.update({
+            "isPaidToWinner": True,
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({"message": "Reto marcado como pagado correctamente"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al marcar como pagado: {str(e)}"}), 500
     
 @challenge_bp.route('/<challenge_id>/participations', methods=['GET'])
 def get_challenge_participations(challenge_id):
