@@ -111,7 +111,6 @@ def update_challenge_status(challenge_id):
     except Exception as e:
         return jsonify({"error": f"Error al actualizar estado: {str(e)}"}), 500
 
-# challenge_routes.py
 @challenge_bp.route('/<challenge_id>/winner', methods=['PUT'])
 @firebase_token_required
 def set_winner(challenge_id):
@@ -161,6 +160,31 @@ def set_winner(challenge_id):
             "totalEarnings": firestore.Increment(challenge['totalPot']),
             "updatedAt": firestore.SERVER_TIMESTAMP
         })
+
+        # 1. Notificar al ganador
+        send_notification(
+            user_id=winner_id,
+            title="¡Has ganado un reto!",
+            message=f"Felicidades, has ganado el reto '{challenge['title']}' con un premio de ${challenge['totalPot']}",
+            notification_type="challenge_win"
+        )
+
+        # 2. Notificar a todos los demás participantes
+        participants = db.collection('participations') \
+            .where('challengeId', '==', challenge_id) \
+            .stream()
+
+        winner_username = db.collection('users').document(winner_id).get().to_dict().get('username', 'un participante')
+        
+        for part in participants:
+            participant_id = part.to_dict()['userId']
+            if participant_id != winner_id:  # No notificar al ganador otra vez
+                send_notification(
+                    user_id=participant_id,
+                    title="Reto finalizado",
+                    message=f"El reto '{challenge['title']}' ha finalizado. El ganador fue {winner_username}. ¡Gracias por participar!",
+                    notification_type="challenge_end"
+                )
         
         return jsonify({
             "message": "Ganador establecido correctamente",
@@ -170,7 +194,7 @@ def set_winner(challenge_id):
         }), 200
     except Exception as e:
         return jsonify({"error": f"Error al establecer ganador: {str(e)}"}), 500
-
+    
 @challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
 @firebase_token_required
 def mark_challenge_as_paid(challenge_id):
