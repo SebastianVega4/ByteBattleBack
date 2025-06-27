@@ -4,6 +4,7 @@ from utils.firebase import db
 from utils.decorators import firebase_token_required, admin_required
 from datetime import datetime
 from firebase_admin import firestore
+from services.notification_service import send_notification
 
 challenge_bp = Blueprint('challenges', __name__)
 
@@ -116,9 +117,7 @@ def update_challenge_status(challenge_id):
 @firebase_token_required
 def set_winner(challenge_id):
     try:
-        # Obtener instancia de Firestore
         db = firestore.client()
-        
         data = request.get_json()
         winner_id = data.get('winnerId')
         score = data.get('score')
@@ -126,22 +125,18 @@ def set_winner(challenge_id):
         if not winner_id or not score:
             return jsonify({"error": "Se requieren winnerId y score"}), 400
 
-        # Referencias a documentos
         challenge_ref = db.collection('challenges').document(challenge_id)
         user_ref = db.collection('users').document(winner_id)
         
-        # Obtener datos del reto
         challenge = challenge_ref.get()
         if not challenge.exists:
             return jsonify({"error": "Reto no encontrado"}), 404
             
         challenge_data = challenge.to_dict()
         
-        # Verificar si ya tiene ganador
         if challenge_data.get('winnerUserId'):
             return jsonify({"error": "Este reto ya tiene un ganador"}), 400
             
-        # Buscar participación del ganador
         participations = db.collection('participations') \
             .where('challengeId', '==', challenge_id) \
             .where('userId', '==', winner_id) \
@@ -152,12 +147,12 @@ def set_winner(challenge_id):
         if not participation:
             return jsonify({"error": "Participación no encontrada"}), 404
             
-        # Actualizaciones en batch para consistencia
         batch = db.batch()
         
         # 1. Marcar ganador en el reto
         batch.update(challenge_ref, {
             'winnerUserId': winner_id,
+            'status': 'pasado',  # Actualizar estado a pasado
             'updatedAt': firestore.SERVER_TIMESTAMP
         })
         
@@ -176,20 +171,36 @@ def set_winner(challenge_id):
             'updatedAt': firestore.SERVER_TIMESTAMP
         })
         
-        # Ejecutar todas las operaciones atómicamente
         batch.commit()
         
-        # Obtener nombre de usuario para notificación
+        # Obtener datos para notificación
         user = user_ref.get().to_dict()
         winner_username = user.get('username', 'un participante')
+        challenge_title = challenge_data.get('title', 'un reto')
         
         # Notificar al ganador
         send_notification(
             user_id=winner_id,
             title="¡Has ganado un reto!",
-            message=f"Felicidades, has ganado el reto '{challenge_data['title']}'",
+            message=f"Felicidades, has ganado el reto '{challenge_title}' con un premio de ${total_pot}",
             notification_type="challenge_win"
         )
+        
+        # Notificar a todos los participantes que no ganaron
+        if challenge_data.get('status') == 'activo':
+            # Solo si el reto estaba activo (para evitar notificaciones duplicadas)
+            participants = db.collection('participations') \
+                .where('challengeId', '==', challenge_id) \
+                .where('userId', '!=', winner_id) \
+                .stream()
+            
+            for part in participants:
+                send_notification(
+                    user_id=part.to_dict().get('userId'),
+                    title="Resultado del reto",
+                    message=f"El reto '{challenge_title}' ha finalizado. El ganador fue {winner_username}",
+                    notification_type="challenge_result"
+                )
         
         return jsonify({
             "success": True,
