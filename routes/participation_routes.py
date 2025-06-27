@@ -147,7 +147,8 @@ def get_pending_results():
         # Obtener todas las participaciones con pago confirmado y puntaje asignado
         participations_ref = db.collection('participations')
         query = participations_ref.where('paymentStatus', '==', 'confirmed') \
-                                 .where('score', '>', 0)  # Solo participaciones con score > 0
+                                 .where('score', '>', 0) \
+                                 .order_by('score', direction=firestore.Query.DESCENDING)
         
         pending_results = []
         
@@ -160,7 +161,7 @@ def get_pending_results():
             challenge = challenge_ref.get()
             
             if not challenge.exists:
-                continue  # Si el reto no existe, saltar esta participación
+                continue
                 
             challenge_data = challenge.to_dict()
             
@@ -175,9 +176,6 @@ def get_pending_results():
                 
                 part_data['challenge'] = challenge_data
                 pending_results.append(part_data)
-        
-        # Ordenar los resultados por score descendente
-        pending_results.sort(key=lambda x: x['score'], reverse=True)
         
         return jsonify({
             "success": True,
