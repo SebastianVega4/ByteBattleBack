@@ -144,15 +144,10 @@ def initiate_participation():
 @admin_required
 def get_pending_results():
     try:
-        # Obtener todas las participaciones con pago confirmado y puntaje asignado
         participations_ref = db.collection('participations')
-        
-        # Usar parámetros nombrados para evitar el warning
-        query = participations_ref.where(
-            filter=firestore.FieldFilter('paymentStatus', '==', 'confirmed')
-        ).where(
-            filter=firestore.FieldFilter('score', '>', 0)
-        ).order_by('score', direction=firestore.Query.DESCENDING)
+        query = participations_ref.where('paymentStatus', '==', 'confirmed') \
+                                 .where('score', '>', 0) \
+                                 .order_by('score', direction=firestore.Query.DESCENDING)
         
         pending_results = []
         
@@ -160,40 +155,25 @@ def get_pending_results():
             part_data = doc.to_dict()
             part_data['id'] = doc.id
             
-            # Obtener datos del reto asociado
-            challenge_ref = db.collection('challenges').document(part_data['challengeId'])
-            challenge = challenge_ref.get()
-            
-            if not challenge.exists:
+            # Obtener datos del reto
+            challenge = db.collection('challenges').document(part_data['challengeId']).get().to_dict()
+            if not challenge or challenge.get('winnerUserId'):
                 continue
                 
-            challenge_data = challenge.to_dict()
+            # Obtener datos del usuario
+            user = db.collection('users').document(part_data['userId']).get().to_dict()
             
-            # Solo incluir si el reto no tiene ganador asignado aún
-            if not challenge_data.get('winnerUserId'):
-                # Obtener datos del usuario
-                user_ref = db.collection('users').document(part_data['userId'])
-                user = user_ref.get()
-                
-                if user.exists:
-                    part_data['user'] = user.to_dict()
-                
-                part_data['challenge'] = challenge_data
-                pending_results.append(part_data)
+            part_data['challenge'] = challenge
+            part_data['user'] = user
+            pending_results.append(part_data)
         
-        return jsonify({
-            "success": True,
-            "count": len(pending_results),
-            "results": pending_results
-        }), 200
+        # Devuelve directamente el array de resultados
+        return jsonify(pending_results), 200
         
     except Exception as e:
         print(f"Error en get_pending_results: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": "Error al obtener resultados pendientes",
-            "details": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
+
     
 @participation_bp.route('/<participation_id>/submit', methods=['PUT'])
 @firebase_token_required
