@@ -356,7 +356,30 @@ def change_password(user_id):
         return jsonify({"error": f"Error de autenticación: {str(e)}"}), 400
     except Exception as e:
         return jsonify({"error": f"Error al cambiar contraseña: {str(e)}"}), 500
-    
+
+@auth_bp.route('/total-users', methods=['GET'])
+def get_total_users():
+    try:
+        # Obtener todos los usuarios (sin paginación para contar el total)
+        users_ref = db.collection('users')
+        
+        # Contar documentos usando una consulta (más eficiente que traer todos los documentos)
+        query = users_ref.count()
+        total = query.get()[0][0].value
+        
+        return jsonify({
+            "success": True,
+            "total": total
+        }), 200
+        
+    except Exception as e:
+        print(f"Error al contar usuarios: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Error al obtener el total de usuarios",
+            "details": str(e)
+        }), 500
+      
 @auth_bp.route('/send-email-verification', methods=['POST'])
 @firebase_token_required
 def send_email_verification():
