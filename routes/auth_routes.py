@@ -15,40 +15,6 @@ from email.mime.multipart import MIMEMultipart
 
 auth_bp = Blueprint('auth', __name__)
 
-# Configuración de correo
-EMAIL_CONFIG = {
-    'sender': os.getenv('EMAIL_SENDER', 'no-reply@bytebattle.com'),
-    'reset_password_template': {
-        'subject': 'Restablece tu contraseña en ByteBattle',
-        'body': 'Hola,\n\nPara restablecer tu contraseña, haz clic en el siguiente enlace:\n{reset_link}\n\nSi no solicitaste este cambio, ignora este correo.\n\nEl equipo de ByteBattle'
-    },
-    'verify_email_template': {
-        'subject': 'Verifica tu correo en ByteBattle',
-        'body': 'Hola,\n\nPor favor verifica tu dirección de correo electrónico haciendo clic en el siguiente enlace:\n{verify_link}\n\nGracias,\nEl equipo de ByteBattle'
-    }
-}
-
-def send_email_via_sendgrid(to_email, subject, body):
-    """Función para enviar correos usando SendGrid"""
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-    
-    message = Mail(
-        from_email=EMAIL_CONFIG['sender'],
-        to_emails=to_email,
-        subject=subject,
-        plain_text_content=body
-    )
-    
-    try:
-        sg = SendGridAPIClient(os.getenv('SENDGRID_API_KEY'))
-        response = sg.send(message)
-        return response.status_code == 202
-    except Exception as e:
-        print(f"Error enviando correo: {str(e)}")
-        return False
-    
-#db = firestore.client()
 db = get_db()
 
 @auth_bp.route('/register', methods=['POST'])
@@ -393,7 +359,7 @@ def send_email_verification():
                 "message": "El email ya está verificado"
             }), 200
         
-        # Generar enlace de verificación
+        # Firebase enviará automáticamente el correo de verificación
         verify_link = auth.generate_email_verification_link(
             user.email,
             action_code_settings=auth.ActionCodeSettings(
@@ -402,16 +368,10 @@ def send_email_verification():
             )
         )
         
-        # Enviar correo
-        email_sent = send_email_via_sendgrid(
-            user.email,
-            EMAIL_CONFIG['verify_email_template']['subject'],
-            EMAIL_CONFIG['verify_email_template']['body'].format(verify_link=verify_link)
-        )
+        # Solo para depuración
+        print(f"Email verification link generated for {user.email}")
         
-        if not email_sent:
-            raise Exception("Error al enviar correo mediante SendGrid")
-        
+        # No necesitamos enviar el correo manualmente, Firebase lo hace
         return jsonify({
             "success": True,
             "message": "Correo de verificación enviado"
@@ -620,43 +580,36 @@ def send_password_reset_email():
             return jsonify({"success": False, "message": "Email es requerido"}), 400
         
         try:
-            user = auth.get_user_by_email(email)
+            # Firebase enviará automáticamente el correo de recuperación
+            reset_link = auth.generate_password_reset_link(
+                email,
+                action_code_settings=auth.ActionCodeSettings(
+                    url=f"{os.getenv('FRONTEND_URL')}/reset-password",
+                    handle_code_in_app=True
+                )
+            )
+            
+            # Solo para depuración
+            print(f"Password reset link generated for {email}")
+            
+            # No necesitamos enviar el correo manualmente, Firebase lo hace
+            return jsonify({
+                "success": True,
+                "message": "Si el email existe, se ha enviado un correo con instrucciones"
+            }), 200
+            
         except auth.UserNotFoundError:
             # Por seguridad, no revelamos si el email existe
             return jsonify({
                 "success": True,
                 "message": "Si el email existe, se ha enviado un correo con instrucciones"
             }), 200
-        
-        # Generar enlace de restablecimiento
-        reset_link = auth.generate_password_reset_link(
-            email,
-            action_code_settings=auth.ActionCodeSettings(
-                url=f"{os.getenv('FRONTEND_URL')}/reset-password",
-                handle_code_in_app=True
-            )
-        )
-        
-        # Enviar correo usando SendGrid
-        email_sent = send_email_via_sendgrid(
-            email,
-            EMAIL_CONFIG['reset_password_template']['subject'],
-            EMAIL_CONFIG['reset_password_template']['body'].format(reset_link=reset_link)
-        )
-        
-        if not email_sent:
-            raise Exception("Error al enviar correo mediante SendGrid")
-        
-        return jsonify({
-            "success": True,
-            "message": "Correo de recuperación enviado"
-        }), 200
-        
+            
     except Exception as e:
         print(f"Error en send_password_reset_email: {str(e)}")
         return jsonify({
             "success": False,
-            "message": "Error al enviar correo de recuperación",
+            "message": "Error al procesar la solicitud de recuperación",
             "details": str(e)
         }), 500
     
