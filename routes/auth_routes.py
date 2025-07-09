@@ -358,33 +358,30 @@ def change_password(user_id):
         return jsonify({"error": f"Error al cambiar contraseña: {str(e)}"}), 500
     
 @auth_bp.route('/send-email-verification', methods=['POST'])
+@firebase_token_required
 def send_email_verification():
     try:
-        data = request.get_json()
-        email = data.get('email', '').strip().lower()
+        user_id = request.user['uid']
+        user = auth.get_user(user_id)
         
-        if not email:
-            return jsonify({"success": False, "message": "Email es requerido"}), 400
-        
-        try:
-            user = auth.get_user_by_email(email)
-            if user.email_verified:
-                return jsonify({"success": True, "message": "El email ya está verificado"}), 200
-        except auth.UserNotFoundError:
-            return jsonify({"success": False, "message": "Usuario no encontrado"}), 404
+        if user.email_verified:
+            return jsonify({
+                "success": True,
+                "message": "El email ya está verificado"
+            }), 200
         
         # Generar enlace de verificación
         verify_link = auth.generate_email_verification_link(
-            email,
+            user.email,
             action_code_settings=auth.ActionCodeSettings(
                 url=f"{os.getenv('FRONTEND_URL')}/verify-email",
                 handle_code_in_app=True
             )
         )
         
-        # Enviar correo usando SendGrid
+        # Enviar correo
         email_sent = send_email_via_sendgrid(
-            email,
+            user.email,
             EMAIL_CONFIG['verify_email_template']['subject'],
             EMAIL_CONFIG['verify_email_template']['body'].format(verify_link=verify_link)
         )
@@ -404,7 +401,6 @@ def send_email_verification():
             "message": "Error al enviar correo de verificación",
             "details": str(e)
         }), 500
-
     
 @auth_bp.route('/current-user', methods=['GET'])
 @firebase_token_required
