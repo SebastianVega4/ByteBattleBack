@@ -220,28 +220,43 @@ def set_winner(challenge_id):
         }), 500   
 
 @challenge_bp.route('/<challenge_id>/mark-paid', methods=['PUT'])
-@firebase_token_required
+@admin_required
 def mark_challenge_as_paid(challenge_id):
     try:
-        # Verificar que el reto existe y tiene un ganador
         challenge_ref = db.collection('challenges').document(challenge_id)
-        challenge = challenge_ref.get().to_dict()
+        challenge_doc = challenge_ref.get()
         
-        if not challenge:
-            return jsonify({"error": "Reto no encontrado"}), 404
+        if not challenge_doc.exists:
+            return jsonify({
+                "success": False,
+                "message": "Reto no encontrado"
+            }), 404
             
-        if not challenge.get('winnerUserId'):
-            return jsonify({"error": "El reto no tiene un ganador asignado"}), 400
+        challenge_data = challenge_doc.to_dict()
+        winner_id = challenge_data.get('winnerUserId')
+        
+        if not winner_id:
+            return jsonify({
+                "success": False,
+                "message": "El reto no tiene un ganador declarado"
+            }), 400
             
         # Marcar como pagado
         challenge_ref.update({
             "isPaidToWinner": True,
-            "updatedAt": firestore.SERVER_TIMESTAMP
+            "updatedAt": datetime.utcnow()
         })
         
-        return jsonify({"message": "Reto marcado como pagado correctamente"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Reto marcado como pagado"
+        }), 200
+        
     except Exception as e:
-        return jsonify({"error": f"Error al marcar como pagado: {str(e)}"}), 500
+        return jsonify({
+            "success": False,
+            "message": f"Error al marcar reto como pagado: {str(e)}"
+        }), 500
     
 @challenge_bp.route('/<challenge_id>/participations', methods=['GET'])
 def get_challenge_participations(challenge_id):
@@ -272,3 +287,67 @@ def get_challenge_participations(challenge_id):
         return jsonify(participations), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@challenge_bp.route('/<challenge_id>/declare-winner', methods=['POST'])
+@admin_required
+def declare_challenge_winner(challenge_id):
+    try:
+        data = request.get_json()
+        winner_id = data.get('winner_id')
+        score = data.get('score')
+        
+        if not winner_id or not score:
+            return jsonify({
+                "success": False,
+                "message": "ID de ganador y puntaje requeridos"
+            }), 400
+            
+        # 1. Obtener el reto para saber el premio
+        challenge_ref = db.collection('challenges').document(challenge_id)
+        challenge_doc = challenge_ref.get()
+        
+        if not challenge_doc.exists:
+            return jsonify({
+                "success": False,
+                "message": "Reto no encontrado"
+            }), 404
+            
+        challenge_data = challenge_doc.to_dict()
+        prize_amount = challenge_data.get('totalPot', 0)
+        
+        # 2. Actualizar el reto con el ganador
+        challenge_ref.update({
+            "winnerUserId": winner_id,
+            "status": "pasado",
+            "isPaidToWinner": True,
+            "updatedAt": datetime.utcnow()
+        })
+        
+        # 3. Actualizar las estadísticas del ganador
+        user_ref = db.collection('users').document(winner_id)
+        
+        # Verificar que el usuario existe
+        if not user_ref.get().exists:
+            return jsonify({
+                "success": False,
+                "message": "Usuario ganador no encontrado"
+            }), 404
+            
+        # Actualizar victorias y ganancias
+        user_ref.update({
+            "challengeWins": firestore.Increment(1),
+            "totalEarnings": firestore.Increment(prize_amount),
+            "updatedAt": datetime.utcnow()
+        })
+        
+        return jsonify({
+            "success": True,
+            "message": "Ganador declarado y estadísticas actualizadas",
+            "prize_amount": prize_amount
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error al declarar ganador: {str(e)}"
+        }), 500

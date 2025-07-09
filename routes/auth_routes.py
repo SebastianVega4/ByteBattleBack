@@ -344,6 +344,9 @@ def change_password(user_id):
         if auth_response.status_code != 200:
             return jsonify({"error": "La contraseña actual es incorrecta"}), 401
         
+
+
+
         # Cambiar contraseña en Firebase Auth
         auth.update_user(user_id, password=data['newPassword'])
         
@@ -655,6 +658,75 @@ def verify_password_reset_code():
             "details": str(e)
         }), 500
 
+@auth_bp.route('/<user_id>/increment-earnings', methods=['PUT'])
+@admin_required
+def increment_user_earnings(user_id):
+    try:
+        data = request.get_json()
+        amount = data.get('amount')
+        
+        if not amount or not isinstance(amount, (int, float)) or amount <= 0:
+            return jsonify({
+                "success": False,
+                "message": "Monto válido requerido"
+            }), 400
+            
+        user_ref = db.collection('users').document(user_id)
+        
+        # Verificar que el usuario existe
+        if not user_ref.get().exists:
+            return jsonify({
+                "success": False,
+                "message": "Usuario no encontrado"
+            }), 404
+            
+        # Incrementar las ganancias totales
+        user_ref.update({
+            "totalEarnings": firestore.Increment(amount),
+            "updatedAt": datetime.utcnow()
+        })
+        
+        return jsonify({
+            "success": True,
+            "message": "Ganancias incrementadas correctamente"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error al incrementar ganancias: {str(e)}"
+        }), 500
+
+@auth_bp.route('/<user_id>/increment-wins', methods=['PUT'])
+@admin_required
+def increment_user_wins(user_id):
+    try:
+        user_ref = db.collection('users').document(user_id)
+        
+        # Verificar que el usuario existe
+        if not user_ref.get().exists:
+            return jsonify({
+                "success": False,
+                "message": "Usuario no encontrado"
+            }), 404
+            
+        # Incrementar el contador de victorias
+        user_ref.update({
+            "challengeWins": firestore.Increment(1),
+            "updatedAt": datetime.utcnow()
+        })
+        
+        return jsonify({
+            "success": True,
+            "message": "Victorias incrementadas correctamente"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error al incrementar victorias: {str(e)}"
+        }), 500
+        
 @auth_bp.route('/confirm-password-reset', methods=['POST'])
 def confirm_password_reset():
     try:
