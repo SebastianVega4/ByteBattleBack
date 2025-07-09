@@ -480,6 +480,7 @@ def get_public_profile(user_id):
     except Exception as e:
         return jsonify({"error": f"Error al obtener perfil público: {str(e)}"}), 500
 
+# En auth_routes.py
 @auth_bp.route('/<user_id>/increment-views', methods=['PUT'])
 @firebase_token_required
 def increment_profile_views(user_id):
@@ -494,9 +495,18 @@ def increment_profile_views(user_id):
         if not user_ref.get().exists:
             return jsonify({"error": "Usuario no encontrado"}), 404
             
-        # Incrementar el contador de visitas
+        # Obtener la última vez que se incrementó
+        last_increment = user_ref.get().to_dict().get('lastViewIncrement')
+        current_time = datetime.utcnow().timestamp() * 1000  # milisegundos
+        
+        # Cooldown de 1 hora (3600000 ms)
+        if last_increment and (current_time - last_increment) < 3600000:
+            return jsonify({"message": "Visitas ya incrementadas recientemente"}), 200
+            
+        # Incrementar el contador de visitas y registrar el tiempo
         user_ref.update({
             "profileViews": firestore.Increment(1),
+            "lastViewIncrement": current_time,
             "updatedAt": datetime.utcnow()
         })
         
@@ -504,7 +514,6 @@ def increment_profile_views(user_id):
         
     except Exception as e:
         return jsonify({"error": f"Error al incrementar visitas: {str(e)}"}), 500
-
     
 @auth_bp.route('/<user_id>/aceptaelreto-username', methods=['PUT'])
 @firebase_token_required
