@@ -459,6 +459,9 @@ def get_public_profile(user_id):
             "uid": user_data.get("uid"),
             "username": user_data.get("username"),
             "email": user_data.get("email"),
+            "isBanned": user_data.get('isBanned', False),
+            "aceptaelretoUsername": user_data.get('aceptaelretoUsername'),
+            "age": user_data.get('age'),
             "emailVerified": auth_user.email_verified,
             "description": user_data.get("description", ""),
             "institution": user_data.get("institution", ""),
@@ -466,6 +469,7 @@ def get_public_profile(user_id):
             "universityCareer": user_data.get("universityCareer", ""),
             "challengeWins": user_data.get("challengeWins", 0),
             "totalParticipations": user_data.get("totalParticipations", 0),
+            "totalEarnings": user_data.get("totalEarnings", 0),  # Asegurar que se incluya
             "profilePictureUrl": user_data.get("profilePictureUrl", ""),
             "profileViews": user_data.get("profileViews", 0),
             "createdAt": user_data.get("createdAt").isoformat() if user_data.get("createdAt") else None
