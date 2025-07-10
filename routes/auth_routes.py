@@ -345,7 +345,30 @@ def get_total_users():
             "message": "Error al obtener el total de usuarios",
             "details": str(e)
         }), 500
-      
+
+def send_email(to_email, subject, body):
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('SMTP_PORT', 587))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    
+    msg = MIMEMultipart()
+    msg['From'] = smtp_user
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'html'))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+        return False
+    
 @auth_bp.route('/send-email-verification', methods=['POST'])
 @firebase_token_required
 def send_email_verification():
@@ -354,12 +377,8 @@ def send_email_verification():
         user = auth.get_user(user_id)
         
         if user.email_verified:
-            return jsonify({
-                "success": True,
-                "message": "El email ya está verificado"
-            }), 200
+            return jsonify({"success": True, "message": "Email ya verificado"}), 200
         
-        # Firebase enviará automáticamente el correo de verificación
         verify_link = auth.generate_email_verification_link(
             user.email,
             action_code_settings=auth.ActionCodeSettings(
@@ -368,21 +387,33 @@ def send_email_verification():
             )
         )
         
-        # Solo para depuración
-        print(f"Email verification link generated for {user.email}")
+        # ENVIAR EMAIL MANUALMENTE
+        email_sent = send_email(
+            to_email=user.email,
+            subject="Verifica tu cuenta en ByteBattle",
+            body=f"""
+            <h2>Verifica tu cuenta</h2>
+            <p>Haz clic en el enlace para completar la verificación:</p>
+            <a href="{verify_link}">Verificar email</a>
+            <p>Si no solicitaste esto, ignora este correo.</p>
+            """
+        )
         
-        # No necesitamos enviar el correo manualmente, Firebase lo hace
+        if not email_sent:
+            return jsonify({
+                "success": False,
+                "message": "Error enviando correo de verificación"
+            }), 500
+            
         return jsonify({
             "success": True,
             "message": "Correo de verificación enviado"
         }), 200
         
     except Exception as e:
-        print(f"Error en send_email_verification: {str(e)}")
         return jsonify({
             "success": False,
-            "message": "Error al enviar correo de verificación",
-            "details": str(e)
+            "message": f"Error: {str(e)}"
         }), 500
     
 @auth_bp.route('/current-user', methods=['GET'])
@@ -573,14 +604,11 @@ def handle_email_verification():
 @auth_bp.route('/send-password-reset-email', methods=['POST'])
 def send_password_reset_email():
     try:
-        data = request.get_json()
-        email = data.get('email', '').strip().lower()
-        
+        email = request.json.get('email', '').strip().lower()
         if not email:
-            return jsonify({"success": False, "message": "Email es requerido"}), 400
+            return jsonify({"success": False, "message": "Email requerido"}), 400
         
         try:
-            # Firebase enviará automáticamente el correo de recuperación
             reset_link = auth.generate_password_reset_link(
                 email,
                 action_code_settings=auth.ActionCodeSettings(
@@ -589,28 +617,39 @@ def send_password_reset_email():
                 )
             )
             
-            # Solo para depuración
-            print(f"Password reset link generated for {email}")
+            # ENVIAR EMAIL MANUALMENTE
+            email_sent = send_email(
+                to_email=email,
+                subject="Recupera tu contraseña en ByteBattle",
+                body=f"""
+                <h2>Restablecer contraseña</h2>
+                <p>Haz clic en el enlace para restablecer tu contraseña:</p>
+                <a href="{reset_link}">Restablecer contraseña</a>
+                <p>Si no solicitaste esto, ignora este correo.</p>
+                """
+            )
             
-            # No necesitamos enviar el correo manualmente, Firebase lo hace
+            if not email_sent:
+                return jsonify({
+                    "success": False,
+                    "message": "Error enviando correo de recuperación"
+                }), 500
+                
             return jsonify({
                 "success": True,
-                "message": "Si el email existe, se ha enviado un correo con instrucciones"
+                "message": "Correo enviado si el email existe"
             }), 200
             
         except auth.UserNotFoundError:
-            # Por seguridad, no revelamos si el email existe
             return jsonify({
                 "success": True,
-                "message": "Si el email existe, se ha enviado un correo con instrucciones"
+                "message": "Correo enviado si el email existe"
             }), 200
             
     except Exception as e:
-        print(f"Error en send_password_reset_email: {str(e)}")
         return jsonify({
             "success": False,
-            "message": "Error al procesar la solicitud de recuperación",
-            "details": str(e)
+            "message": f"Error: {str(e)}"
         }), 500
     
 @auth_bp.route('/verify-password-reset-code', methods=['POST'])
